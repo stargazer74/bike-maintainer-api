@@ -1,0 +1,474 @@
+openapi: 3.0.3
+info:
+  title: Maintenance Service API
+  description: API for managing vehicles, their maintenance tasks and maintenance logs.
+  version: 1.0.0
+tags:
+  - name: Vehicles
+  - name: MaintenanceTasks
+  - name: MaintenanceLogs
+paths:
+  /api/v1/vehicles:
+    get:
+      tags: [ Vehicles ]
+      operationId: listVehicles
+      summary: List all vehicles
+      responses:
+        '200':
+          description: List of vehicles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VehicleResponse'
+    post:
+      tags: [ Vehicles ]
+      operationId: createVehicle
+      summary: Create a new vehicle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleRequest'
+      responses:
+        '201':
+          description: Vehicle created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/vehicles/{vehicleId}:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+    get:
+      tags: [ Vehicles ]
+      operationId: getVehicle
+      summary: Get a vehicle by id
+      responses:
+        '200':
+          description: The vehicle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [ Vehicles ]
+      operationId: updateVehicle
+      summary: Update a vehicle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleRequest'
+      responses:
+        '200':
+          description: Vehicle updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [ Vehicles ]
+      operationId: deleteVehicle
+      summary: Delete a vehicle
+      responses:
+        '204':
+          description: Vehicle deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/vehicles/{vehicleId}/maintenance-tasks:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+    get:
+      tags: [ MaintenanceTasks ]
+      operationId: listMaintenanceTasks
+      summary: List maintenance tasks of a vehicle
+      responses:
+        '200':
+          description: List of maintenance tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MaintenanceTaskResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [ MaintenanceTasks ]
+      operationId: createMaintenanceTask
+      summary: Create a maintenance task for a vehicle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaintenanceTaskRequest'
+      responses:
+        '201':
+          description: Maintenance task created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceTaskResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/vehicles/{vehicleId}/maintenance-tasks/{taskId}:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+      - $ref: '#/components/parameters/TaskId'
+    get:
+      tags: [ MaintenanceTasks ]
+      operationId: getMaintenanceTask
+      summary: Get a maintenance task by id
+      responses:
+        '200':
+          description: The maintenance task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceTaskResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [ MaintenanceTasks ]
+      operationId: updateMaintenanceTask
+      summary: Update a maintenance task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaintenanceTaskRequest'
+      responses:
+        '200':
+          description: Maintenance task updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceTaskResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [ MaintenanceTasks ]
+      operationId: deleteMaintenanceTask
+      summary: Delete a maintenance task
+      responses:
+        '204':
+          description: Maintenance task deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/vehicles/{vehicleId}/maintenance-logs:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+    get:
+      tags: [ MaintenanceLogs ]
+      operationId: listMaintenanceLogs
+      summary: List maintenance logs of a vehicle
+      responses:
+        '200':
+          description: List of maintenance logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MaintenanceLogResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [ MaintenanceLogs ]
+      operationId: createMaintenanceLog
+      summary: Create a maintenance log for a vehicle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaintenanceLogRequest'
+      responses:
+        '201':
+          description: Maintenance log created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceLogResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/vehicles/{vehicleId}/maintenance-logs/{logId}:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+      - $ref: '#/components/parameters/LogId'
+    get:
+      tags: [ MaintenanceLogs ]
+      operationId: getMaintenanceLog
+      summary: Get a maintenance log by id
+      responses:
+        '200':
+          description: The maintenance log
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceLogResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [ MaintenanceLogs ]
+      operationId: updateMaintenanceLog
+      summary: Update a maintenance log
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaintenanceLogRequest'
+      responses:
+        '200':
+          description: Maintenance log updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceLogResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [ MaintenanceLogs ]
+      operationId: deleteMaintenanceLog
+      summary: Delete a maintenance log
+      responses:
+        '204':
+          description: Maintenance log deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  parameters:
+    VehicleId:
+      name: vehicleId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    LogId:
+      name: logId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    VehicleType:
+      type: string
+      enum: [ MOTORCYCLE, CAR ]
+
+    VehicleRequest:
+      type: object
+      required: [ name, type ]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        type:
+          $ref: '#/components/schemas/VehicleType'
+        make:
+          type: string
+          maxLength: 100
+        model:
+          type: string
+          maxLength: 100
+        modelYear:
+          type: integer
+        currentMileage:
+          type: integer
+          minimum: 0
+          default: 0
+
+    VehicleResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/VehicleType'
+        make:
+          type: string
+        model:
+          type: string
+        modelYear:
+          type: integer
+        currentMileage:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+
+    MaintenanceTaskRequest:
+      type: object
+      required: [ name ]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 1000
+        intervalKm:
+          type: integer
+        intervalMonths:
+          type: integer
+        firstDueKm:
+          type: integer
+        firstDueMonths:
+          type: integer
+        oneTime:
+          type: boolean
+          default: false
+        active:
+          type: boolean
+          default: true
+
+    MaintenanceTaskResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        vehicleId:
+          type: integer
+          format: int64
+          readOnly: true
+        name:
+          type: string
+        description:
+          type: string
+        intervalKm:
+          type: integer
+        intervalMonths:
+          type: integer
+        firstDueKm:
+          type: integer
+        firstDueMonths:
+          type: integer
+        oneTime:
+          type: boolean
+        active:
+          type: boolean
+
+    MaintenanceLogRequest:
+      type: object
+      required: [ performedAt, mileageAtPerformed ]
+      properties:
+        performedAt:
+          type: string
+          format: date
+        mileageAtPerformed:
+          type: integer
+          minimum: 0
+        notes:
+          type: string
+          maxLength: 1000
+        performedTaskIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+
+    MaintenanceLogResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        vehicleId:
+          type: integer
+          format: int64
+          readOnly: true
+        performedAt:
+          type: string
+          format: date
+        mileageAtPerformed:
+          type: integer
+        notes:
+          type: string
+        performedTaskIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
