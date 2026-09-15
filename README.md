@@ -1,48 +1,47 @@
 # README #
 
-Diese Spezifikation beschreibt die REST-Schnittstellen des **Bike Maintainer** Backends – einer Anwendung
-zur Digitalisierung von Wartungsplänen für Motorräder und Autos. Sie deckt die Verwaltung von Fahrzeugen,
-deren Wartungsaufgaben (Intervalle nach km und/oder Monaten) sowie die Wartungshistorie ab.
+This specification describes the REST interfaces of the **Bike Maintainer** backend – an application for
+digitizing maintenance schedules for motorcycles and cars. It covers the management of vehicles, their
+maintenance tasks (intervals based on km and/or months), and the maintenance history.
 
-Das Modul enthält ausschließlich die OpenAPI-Definition (`src/main/resources/maintenance-api.yaml`) und wird
-per `maven-remote-resources-plugin` als Artefakt gebündelt, sodass sie von konsumierenden Projekten
-(z. B. `maintainer-backend`) eingebunden werden kann. Dort wird auf Basis dieser Spezifikation mit dem
-`openapi-generator-maven-plugin` (Generator `spring`, `interfaceOnly`) der Server-Code (API-Interfaces und
-Modelle) erzeugt.
+The module contains only the OpenAPI definition (`src/main/resources/maintenance-api.yaml`) and is bundled
+as an artifact via the `maven-remote-resources-plugin`, so it can be included by consuming projects
+(e.g. `maintainer-backend`). There, the server code (API interfaces and models) is generated from this
+specification using the `openapi-generator-maven-plugin` (generator `spring`, `interfaceOnly`).
 
-## Architektur-Prinzipien ##
+## Architecture Principles ##
 
 ### Naming Convention ###
 
-+ Property Names: Durchgehend camelCase (z. B. currentMileage, mileageAtPerformed).
-+ Schemas: Benannt nach dem Muster {Entity}Request / {Entity}Response (z. B. VehicleRequest, VehicleResponse).
-+ Pfade: Ressourcen liegen unterhalb von `/api/v1/vehicles`; MaintenanceTasks und MaintenanceLogs sind als
-  Sub-Ressourcen eines Vehicles modelliert (`/api/v1/vehicles/{vehicleId}/maintenance-tasks`, `.../maintenance-logs`).
++ Property names: Consistently camelCase (e.g. currentMileage, mileageAtPerformed).
++ Schemas: Named according to the pattern {Entity}Request / {Entity}Response (e.g. VehicleRequest, VehicleResponse).
++ Paths: Resources are located under `/api/v1/vehicles`; MaintenanceTasks and MaintenanceLogs are modeled as
+  sub-resources of a Vehicle (`/api/v1/vehicles/{vehicleId}/maintenance-tasks`, `.../maintenance-logs`).
 
-### Datentypen & Formate ###
+### Data Types & Formats ###
 
-+ IDs: Alle IDs (vehicleId, taskId, logId, ...) sind `integer` mit `format: int64` (DB-Autoincrement), keine UUIDs.
-+ Timestamps: Erzeugungs-/Änderungszeitpunkte (createdAt, updatedAt) nutzen `date-time` (ISO-8601). Reine
-  Datumsangaben ohne Uhrzeit (z. B. performedAt) nutzen `date`.
-+ Enums: Feste Wertebereiche werden als `enum` modelliert (z. B. VehicleType: MOTORCYCLE, CAR).
-+ Distanzen: Kilometerstände und -intervalle (currentMileage, intervalKm, mileageAtPerformed, ...) sind
-  `integer` und werden in Kilometern angegeben.
++ IDs: All IDs (vehicleId, taskId, logId, ...) are `integer` with `format: int64` (DB auto-increment), not UUIDs.
++ Timestamps: Creation/modification timestamps (createdAt, updatedAt) use `date-time` (ISO-8601). Plain dates
+  without a time component (e.g. performedAt) use `date`.
++ Enums: Fixed value ranges are modeled as `enum` (e.g. VehicleType: MOTORCYCLE, CAR).
++ Distances: Mileage readings and intervals (currentMileage, intervalKm, mileageAtPerformed, ...) are
+  `integer` and expressed in kilometers.
 
-### Datenqualität (Validation) ###
+### Data Quality (Validation) ###
 
-+ Required-Felder: Nur fachlich zwingende Felder sind als `required` markiert (z. B. name/type bei Vehicle,
-  performedAt/mileageAtPerformed bei MaintenanceLog); rein optionale Angaben (make, model, description, notes, ...)
-  bleiben bewusst optional.
-+ Constraints: `maxLength`-Vorgaben orientieren sich an den erwarteten Feldlängen im Backend (z. B. name: 255,
++ Required fields: Only fields that are functionally mandatory are marked as `required` (e.g. name/type for
+  Vehicle, performedAt/mileageAtPerformed for MaintenanceLog); purely optional attributes (make, model,
+  description, notes, ...) remain deliberately optional.
++ Constraints: `maxLength` specifications are based on the expected field lengths in the backend (e.g. name: 255,
   description/notes: 1000).
 
-## Ressourcen ##
+## Resources ##
 
-+ **Vehicles** (`/api/v1/vehicles`) – CRUD für Fahrzeuge (Motorrad/Auto) inkl. aktuellem Kilometerstand.
-+ **MaintenanceTasks** (`/api/v1/vehicles/{vehicleId}/maintenance-tasks`) – Wartungsaufgaben eines Fahrzeugs mit
-  km- und/oder monatsbasiertem Intervall.
-+ **MaintenanceLogs** (`/api/v1/vehicles/{vehicleId}/maintenance-logs`) – Historie durchgeführter Wartungen
-  (Datum, Kilometerstand, erledigte Tasks).
++ **Vehicles** (`/api/v1/vehicles`) – CRUD for vehicles (motorcycle/car) including current mileage.
++ **MaintenanceTasks** (`/api/v1/vehicles/{vehicleId}/maintenance-tasks`) – Maintenance tasks for a vehicle with
+  km- and/or month-based intervals.
++ **MaintenanceLogs** (`/api/v1/vehicles/{vehicleId}/maintenance-logs`) – History of maintenance performed
+  (date, mileage, completed tasks).
 
 ## Build ##
 
@@ -50,5 +49,5 @@ Modelle) erzeugt.
 mvn clean package
 ```
 
-Erzeugt ein Jar, das die OpenAPI-Spezifikation als Ressource enthält und in anderen Modulen als Maven-Abhängigkeit
-eingebunden werden kann.
+Produces a jar that contains the OpenAPI specification as a resource and can be included as a Maven dependency
+in other modules.
