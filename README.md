@@ -37,13 +37,13 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
 
 ## Resources ##
 
-+ **Vehicles** (`/api/v1/vehicles`) – CRUD für Fahrzeuge (Motorrad/Auto) inkl. aktuellem Kilometerstand.
-+ **MaintenanceTasks** (`/api/v1/vehicles/{vehicleId}/maintenance-tasks`) – Wartungsaufgaben eines Fahrzeugs mit
-  km- und/oder monatsbasiertem Intervall.
-+ **MaintenanceLogs** (`/api/v1/vehicles/{vehicleId}/maintenance-logs`) – Historie durchgeführter Wartungen
-  (Datum, Kilometerstand, erledigte Tasks).
-+ **MaintenanceReport** (`/api/v1/vehicles/{vehicleId}/maintenance-report`) – Wartungsbericht/-historie eines
-  Fahrzeugs als PDF-Download (`application/pdf`).
++ **Vehicles** (`/api/v1/vehicles`) – CRUD for vehicles (motorcycle/car) including current mileage.
++ **MaintenanceTasks** (`/api/v1/vehicles/{vehicleId}/maintenance-tasks`) – Maintenance tasks for a vehicle with
+  km- and/or month-based intervals.
++ **MaintenanceLogs** (`/api/v1/vehicles/{vehicleId}/maintenance-logs`) – History of maintenance performed
+  (date, mileage, completed tasks).
++ **MaintenanceReport** (`/api/v1/vehicles/{vehicleId}/maintenance-report`) – Maintenance report/history of a
+  vehicle as a PDF download (`application/pdf`).
 
 ## Build ##
 
