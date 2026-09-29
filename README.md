@@ -43,6 +43,8 @@ Modelle) erzeugt.
   km- und/oder monatsbasiertem Intervall.
 + **MaintenanceLogs** (`/api/v1/vehicles/{vehicleId}/maintenance-logs`) – Historie durchgeführter Wartungen
   (Datum, Kilometerstand, erledigte Tasks).
++ **MaintenanceReport** (`/api/v1/vehicles/{vehicleId}/maintenance-report`) – Wartungsbericht/-historie eines
+  Fahrzeugs als PDF-Download (`application/pdf`).
 
 ## Build ##
 
