@@ -292,6 +292,7 @@ components:
       schema:
         type: integer
         format: int64
+        minimum: 1
     TaskId:
       name: taskId
       in: path
@@ -299,6 +300,7 @@ components:
       schema:
         type: integer
         format: int64
+        minimum: 1
     LogId:
       name: logId
       in: path
@@ -306,6 +308,7 @@ components:
       schema:
         type: integer
         format: int64
+        minimum: 1
 
   responses:
     BadRequest:
@@ -338,9 +341,11 @@ components:
           $ref: '#/components/schemas/VehicleType'
         make:
           type: string
+          minLength: 1
           maxLength: 100
         model:
           type: string
+          minLength: 1
           maxLength: 100
         modelYear:
           type: integer
@@ -349,6 +354,7 @@ components:
         currentMileage:
           type: integer
           minimum: 0
+          default: 0
 
     VehicleResponse:
       type: object
@@ -392,19 +398,24 @@ components:
           maxLength: 255
         description:
           type: string
+          minLength: 1
           maxLength: 1000
         intervalKm:
           type: integer
           minimum: 1
+          description: Interval in kilometers (must be positive)
         intervalMonths:
           type: integer
           minimum: 1
+          description: Interval in months (must be positive)
         firstDueKm:
           type: integer
           minimum: 0
+          description: First due at this mileage
         firstDueMonths:
           type: integer
           minimum: 0
+          description: First due after this many months
         oneTime:
           type: boolean
           default: false
@@ -453,6 +464,7 @@ components:
           minimum: 0
         notes:
           type: string
+          minLength: 1
           maxLength: 1000
         performedTaskIds:
           type: array
@@ -460,6 +472,7 @@ components:
           items:
             type: integer
             format: int64
+            minimum: 1
 
     MaintenanceLogResponse:
       type: object
