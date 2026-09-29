@@ -265,6 +265,24 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/vehicles/{vehicleId}/maintenance-report:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+    get:
+      tags: [ MaintenanceLogs ]
+      operationId: downloadMaintenanceReport
+      summary: Download the maintenance report (history) of a vehicle as PDF
+      responses:
+        '200':
+          description: Maintenance report as PDF file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
   parameters:
     VehicleId:
@@ -310,10 +328,11 @@ components:
 
     VehicleRequest:
       type: object
-      required: [ name, type ]
+      required: [ name, type, modelYear, currentMileage ]
       properties:
         name:
           type: string
+          minLength: 1
           maxLength: 255
         type:
           $ref: '#/components/schemas/VehicleType'
@@ -325,13 +344,15 @@ components:
           maxLength: 100
         modelYear:
           type: integer
+          minimum: 1900
+          maximum: 2100
         currentMileage:
           type: integer
           minimum: 0
-          default: 0
 
     VehicleResponse:
       type: object
+      required: [ id, name, type, modelYear, currentMileage, createdAt, updatedAt ]
       properties:
         id:
           type: integer
@@ -360,22 +381,30 @@ components:
 
     MaintenanceTaskRequest:
       type: object
+      description: >-
+        At least one of intervalKm or intervalMonths must be provided unless oneTime is true;
+        this cross-field rule is enforced by the service, not by this schema.
       required: [ name ]
       properties:
         name:
           type: string
+          minLength: 1
           maxLength: 255
         description:
           type: string
           maxLength: 1000
         intervalKm:
           type: integer
+          minimum: 1
         intervalMonths:
           type: integer
+          minimum: 1
         firstDueKm:
           type: integer
+          minimum: 0
         firstDueMonths:
           type: integer
+          minimum: 0
         oneTime:
           type: boolean
           default: false
@@ -385,6 +414,7 @@ components:
 
     MaintenanceTaskResponse:
       type: object
+      required: [ id, vehicleId, name, oneTime, active ]
       properties:
         id:
           type: integer
@@ -426,12 +456,14 @@ components:
           maxLength: 1000
         performedTaskIds:
           type: array
+          uniqueItems: true
           items:
             type: integer
             format: int64
 
     MaintenanceLogResponse:
       type: object
+      required: [ id, vehicleId, performedAt, mileageAtPerformed, createdAt ]
       properties:
         id:
           type: integer
