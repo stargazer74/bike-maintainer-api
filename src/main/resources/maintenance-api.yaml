@@ -331,7 +331,7 @@ components:
 
     VehicleRequest:
       type: object
-      required: [ name, type, modelYear, currentMileage ]
+      required: [ name, type, modelYear, firstRegistrationDate, currentMileage ]
       properties:
         name:
           type: string
@@ -351,13 +351,19 @@ components:
           type: integer
           minimum: 1900
           maximum: 2100
+        firstRegistrationDate:
+          type: string
+          format: date
+          description: >-
+            Date of first registration (Erstzulassung) — independent of modelYear, a vehicle's
+            model year does not have to match when it was actually registered.
         currentMileage:
           type: integer
           minimum: 0
 
     VehicleResponse:
       type: object
-      required: [ id, name, type, modelYear, currentMileage, createdAt, updatedAt ]
+      required: [ id, name, type, modelYear, firstRegistrationDate, currentMileage, createdAt, updatedAt ]
       properties:
         id:
           type: integer
@@ -373,6 +379,9 @@ components:
           type: string
         modelYear:
           type: integer
+        firstRegistrationDate:
+          type: string
+          format: date
         currentMileage:
           type: integer
         createdAt:
@@ -422,9 +431,13 @@ components:
           type: boolean
           default: true
 
+    MaintenanceTaskStatus:
+      type: string
+      enum: [ OVERDUE, DUE_SOON, OK, DONE ]
+
     MaintenanceTaskResponse:
       type: object
-      required: [ id, vehicleId, name, oneTime, active ]
+      required: [ id, vehicleId, name, oneTime, active, status ]
       properties:
         id:
           type: integer
@@ -450,6 +463,44 @@ components:
           type: boolean
         active:
           type: boolean
+        status:
+          $ref: '#/components/schemas/MaintenanceTaskStatus'
+          readOnly: true
+        progress:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          readOnly: true
+          description: Clamped elapsed fraction of whichever axis (km/time) is more urgent.
+        remainingFraction:
+          type: number
+          format: double
+          readOnly: true
+          description: >-
+            Signed remaining fraction of whichever interval is more urgent — negative once
+            overdue. Unitless, comparable across tasks and across km/time axes for sorting.
+        kmRemaining:
+          type: integer
+          readOnly: true
+          description: >-
+            Signed remaining kilometers; negative means overdue by that many km. Only set when
+            the km axis is the one determining status/remainingFraction (null if the task has no
+            km interval, or if its time axis is the more urgent one).
+        daysRemaining:
+          type: integer
+          readOnly: true
+          description: >-
+            Signed remaining days; negative means overdue by that many days. Only set when the
+            time axis is the one determining status/remainingFraction (null if the task has no
+            time interval, or if its km axis is the more urgent one).
+        lastServiceMileage:
+          type: integer
+          readOnly: true
+        lastServiceDate:
+          type: string
+          format: date
+          readOnly: true
 
     MaintenanceLogRequest:
       type: object
