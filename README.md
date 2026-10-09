@@ -49,6 +49,9 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
 + Every vehicle belongs to one user. Resources of other users are answered with **404** (not 403), so that existing
   IDs cannot be probed. Missing/expired login is **401**, missing role or CSRF token is **403**.
 + Roles: `USER` (default on registration) and `ADMIN`.
++ Language: each user has a preferred `language` (`de`/`en`), set on registration and changeable via
+  `PATCH /api/v1/auth/me`; it is used for the UI, emails and the PDF report. `ErrorResponse.message` is technical
+  (English) and not meant for display.
 
 ## Resources ##
 
