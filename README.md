@@ -37,18 +37,27 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
 
 ## Authentication ##
 
-+ Session based: `login`/`register` set a session cookie (`JSESSIONID`, HttpOnly); declared as security scheme
-  `cookieAuth` and required globally. Public operations (`register`, `login`, `password-reset/*`) override this with
++ Session based: `login` sets a session cookie (`JSESSIONID`, HttpOnly); declared as security scheme `cookieAuth` and
+  required globally. Public operations (`register`, `verify-email*`, `login`, `password-reset/*`) override this with
   `security: []`.
++ Email verification: `register` creates an unverified account and emails a link; login is possible only after
+  `verify-email`.
++ No account enumeration: `register`, `verify-email/resend` and `password-reset/request` always answer the same,
+  whether the email is registered or not; failed logins and account lockout are indistinguishable from wrong
+  credentials / the IP rate limit.
 + CSRF: the server sets an `XSRF-TOKEN` cookie that state-changing requests must echo in the `X-XSRF-TOKEN` header.
 + Every vehicle belongs to one user. Resources of other users are answered with **404** (not 403), so that existing
   IDs cannot be probed. Missing/expired login is **401**, missing role or CSRF token is **403**.
 + Roles: `USER` (default on registration) and `ADMIN`.
++ Language: each user has a preferred `language` (`de`/`en`), set on registration and changeable via
+  `PATCH /api/v1/auth/me`; it is used for the UI, emails and the PDF report. `ErrorResponse.message` is technical
+  (English) and not meant for display.
 
 ## Resources ##
 
-+ **Auth** (`/api/v1/auth/...`) – `register`, `login`, `logout`, `me` (current user), `password` (change password),
-  `password-reset/request` and `password-reset/confirm` (reset via emailed token).
++ **Auth** (`/api/v1/auth/...`) – `register`, `verify-email` and `verify-email/resend`, `login`, `logout`, `me`
+  (current user), `password` (change password), `password-reset/request` and `password-reset/confirm` (reset via
+  emailed token).
 + **Admin** (`/api/v1/admin/users`) – List users and change their role/active state (role `ADMIN` only).
 + **Vehicles** (`/api/v1/vehicles`) – CRUD for vehicles (motorcycle/car) including current mileage.
 + **MaintenanceTasks** (`/api/v1/vehicles/{vehicleId}/maintenance-tasks`) – Maintenance tasks for a vehicle with
