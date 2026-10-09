@@ -464,6 +464,27 @@ paths:
                 $ref: '#/components/schemas/UserResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [ Auth ]
+      operationId: updateCurrentUser
+      summary: Update settings of the currently logged-in user (e.g. preferred language)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCurrentUserRequest'
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/v1/auth/password:
     put:
@@ -907,6 +928,13 @@ components:
         10 to 72 characters. 72 is the BCrypt limit; it applies to the UTF-8 byte length, which the
         service enforces additionally (umlauts count as 2 bytes).
 
+    Language:
+      type: string
+      enum: [ de, en ]
+      description: >-
+        Preferred language of the user (ISO 639-1). Used for the UI after login and for emails and
+        the PDF maintenance report.
+
     RegisterRequest:
       type: object
       required: [ email, password ]
@@ -915,6 +943,19 @@ components:
           $ref: '#/components/schemas/Email'
         password:
           $ref: '#/components/schemas/NewPassword'
+        language:
+          $ref: '#/components/schemas/Language'
+          description: >-
+            Language of the new account (the client sends its current UI language). If omitted,
+            the service derives it from `Accept-Language`, falling back to `de`. The verification
+            email is sent in this language.
+
+    UpdateCurrentUserRequest:
+      type: object
+      required: [ language ]
+      properties:
+        language:
+          $ref: '#/components/schemas/Language'
 
     LoginRequest:
       type: object
@@ -978,7 +1019,7 @@ components:
 
     UserResponse:
       type: object
-      required: [ id, email, role, active, emailVerified, createdAt ]
+      required: [ id, email, role, active, emailVerified, language, createdAt ]
       properties:
         id:
           type: integer
@@ -988,6 +1029,8 @@ components:
           type: string
         role:
           $ref: '#/components/schemas/UserRole'
+        language:
+          $ref: '#/components/schemas/Language'
         active:
           type: boolean
         emailVerified:
@@ -1015,5 +1058,8 @@ components:
             e.g. `EMAIL_NOT_VERIFIED`, `ACCOUNT_DISABLED`.
         message:
           type: string
+          description: >-
+            Technical description in English for logs and debugging. Clients show their own
+            localized texts based on `status` and `code` instead of displaying this message.
         path:
           type: string
