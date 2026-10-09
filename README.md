@@ -35,8 +35,21 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
 + Constraints: `maxLength` specifications are based on the expected field lengths in the backend (e.g. name: 255,
   description/notes: 1000).
 
+## Authentication ##
+
++ Session based: `login`/`register` set a session cookie (`JSESSIONID`, HttpOnly); declared as security scheme
+  `cookieAuth` and required globally. Public operations (`register`, `login`, `password-reset/*`) override this with
+  `security: []`.
++ CSRF: the server sets an `XSRF-TOKEN` cookie that state-changing requests must echo in the `X-XSRF-TOKEN` header.
++ Every vehicle belongs to one user. Resources of other users are answered with **404** (not 403), so that existing
+  IDs cannot be probed. Missing/expired login is **401**, missing role or CSRF token is **403**.
++ Roles: `USER` (default on registration) and `ADMIN`.
+
 ## Resources ##
 
++ **Auth** (`/api/v1/auth/...`) – `register`, `login`, `logout`, `me` (current user), `password` (change password),
+  `password-reset/request` and `password-reset/confirm` (reset via emailed token).
++ **Admin** (`/api/v1/admin/users`) – List users and change their role/active state (role `ADMIN` only).
 + **Vehicles** (`/api/v1/vehicles`) – CRUD for vehicles (motorcycle/car) including current mileage.
 + **MaintenanceTasks** (`/api/v1/vehicles/{vehicleId}/maintenance-tasks`) – Maintenance tasks for a vehicle with
   km- and/or month-based intervals.
