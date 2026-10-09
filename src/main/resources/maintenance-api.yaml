@@ -1,12 +1,29 @@
 openapi: 3.0.3
 info:
   title: Maintenance Service API
-  description: API for managing vehicles, their maintenance tasks and maintenance logs.
-  version: 1.0.0
+  description: >-
+    API for managing vehicles, their maintenance tasks and maintenance logs.
+
+
+    Authentication is session based: a successful `login` (or `register`) returns a session cookie
+    (`JSESSIONID`, HttpOnly) that authenticates all further requests. Every vehicle belongs to exactly
+    one user; vehicles of other users (and their tasks, logs and reports) are reported as 404.
+
+
+    CSRF protection: the server sets an `XSRF-TOKEN` cookie; every state-changing request
+    (POST/PUT/PATCH/DELETE) must echo its value in the `X-XSRF-TOKEN` header, otherwise it is
+    rejected with 403.
+  version: 2.0.0
 tags:
+  - name: Auth
+    description: Registration, login/logout and account management of the current user
+  - name: Admin
+    description: User administration (requires role ADMIN)
   - name: Vehicles
   - name: MaintenanceTasks
   - name: MaintenanceLogs
+security:
+  - cookieAuth: [ ]
 paths:
   /api/v1/vehicles:
     get:
@@ -22,6 +39,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/VehicleResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     post:
       tags: [ Vehicles ]
       operationId: createVehicle
@@ -41,6 +60,8 @@ paths:
                 $ref: '#/components/schemas/VehicleResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/v1/vehicles/{vehicleId}:
     parameters:
@@ -58,6 +79,8 @@ paths:
                 $ref: '#/components/schemas/VehicleResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     put:
       tags: [ Vehicles ]
       operationId: updateVehicle
@@ -79,6 +102,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     delete:
       tags: [ Vehicles ]
       operationId: deleteVehicle
@@ -88,6 +113,8 @@ paths:
           description: Vehicle deleted
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/v1/vehicles/{vehicleId}/maintenance-tasks:
     parameters:
@@ -107,6 +134,8 @@ paths:
                   $ref: '#/components/schemas/MaintenanceTaskResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     post:
       tags: [ MaintenanceTasks ]
       operationId: createMaintenanceTask
@@ -128,6 +157,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/v1/vehicles/{vehicleId}/maintenance-tasks/{taskId}:
     parameters:
@@ -146,6 +177,8 @@ paths:
                 $ref: '#/components/schemas/MaintenanceTaskResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     put:
       tags: [ MaintenanceTasks ]
       operationId: updateMaintenanceTask
@@ -167,6 +200,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     delete:
       tags: [ MaintenanceTasks ]
       operationId: deleteMaintenanceTask
@@ -176,6 +211,8 @@ paths:
           description: Maintenance task deleted
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/v1/vehicles/{vehicleId}/maintenance-logs:
     parameters:
@@ -195,6 +232,8 @@ paths:
                   $ref: '#/components/schemas/MaintenanceLogResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     post:
       tags: [ MaintenanceLogs ]
       operationId: createMaintenanceLog
@@ -216,6 +255,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/v1/vehicles/{vehicleId}/maintenance-logs/{logId}:
     parameters:
@@ -234,6 +275,8 @@ paths:
                 $ref: '#/components/schemas/MaintenanceLogResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     put:
       tags: [ MaintenanceLogs ]
       operationId: updateMaintenanceLog
@@ -255,6 +298,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     delete:
       tags: [ MaintenanceLogs ]
       operationId: deleteMaintenanceLog
@@ -264,6 +309,8 @@ paths:
           description: Maintenance log deleted
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/v1/vehicles/{vehicleId}/maintenance-report:
     parameters:
@@ -282,8 +329,209 @@ paths:
                 format: binary
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/auth/register:
+    post:
+      tags: [ Auth ]
+      operationId: register
+      summary: Register a new user account (role USER) and log it in
+      security: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered and logged in; the session cookie is set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/auth/login:
+    post:
+      tags: [ Auth ]
+      operationId: login
+      summary: Log in with email and password
+      security: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Logged in; the session cookie is set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/auth/logout:
+    post:
+      tags: [ Auth ]
+      operationId: logout
+      summary: Log out and invalidate the current session
+      responses:
+        '204':
+          description: Logged out
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/auth/me:
+    get:
+      tags: [ Auth ]
+      operationId: getCurrentUser
+      summary: Get the currently logged-in user
+      responses:
+        '200':
+          description: The current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/auth/password:
+    put:
+      tags: [ Auth ]
+      operationId: changePassword
+      summary: Change the password of the current user
+      description: All other sessions of the user are invalidated; the current session stays valid.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '204':
+          description: Password changed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/auth/password-reset/request:
+    post:
+      tags: [ Auth ]
+      operationId: requestPasswordReset
+      summary: Request a password reset link by email
+      description: >-
+        Always answers 204, regardless of whether an account with this email exists, so that
+        registered email addresses cannot be discovered. If an active account exists, a reset link
+        valid for one hour is sent by email.
+      security: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        '204':
+          description: Request accepted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/auth/password-reset/confirm:
+    post:
+      tags: [ Auth ]
+      operationId: confirmPasswordReset
+      summary: Set a new password using a reset token
+      description: The token can be used only once. All sessions of the user are invalidated.
+      security: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirmRequest'
+      responses:
+        '204':
+          description: Password reset
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/admin/users:
+    get:
+      tags: [ Admin ]
+      operationId: listUsers
+      summary: List all users
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/admin/users/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    patch:
+      tags: [ Admin ]
+      operationId: updateUser
+      summary: Change role and/or active state of a user
+      description: >-
+        Deactivating a user invalidates all of their sessions. The last active admin cannot be
+        demoted or deactivated, and admins cannot deactivate themselves (400).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
 components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: JSESSIONID
+      description: Session cookie set by login/register.
+
   parameters:
     VehicleId:
       name: vehicleId
@@ -309,6 +557,14 @@ components:
         type: integer
         format: int64
         minimum: 1
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
 
   responses:
     BadRequest:
@@ -318,7 +574,36 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     NotFound:
-      description: Resource not found
+      description: Resource not found (or owned by another user)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Not logged in, session expired or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Logged in but not permitted (e.g. missing role ADMIN or missing CSRF token)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Conflict with the current state (e.g. email already registered)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          description: Seconds until the next attempt is allowed
+          schema:
+            type: integer
       content:
         application/json:
           schema:
@@ -548,6 +833,102 @@ components:
           items:
             type: integer
             format: int64
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+
+    UserRole:
+      type: string
+      enum: [ USER, ADMIN ]
+
+    Email:
+      type: string
+      format: email
+      maxLength: 255
+      description: Compared case-insensitively; stored trimmed and lower-cased.
+
+    NewPassword:
+      type: string
+      minLength: 10
+      maxLength: 72
+      description: >-
+        10 to 72 characters. 72 is the BCrypt limit; it applies to the UTF-8 byte length, which the
+        service enforces additionally (umlauts count as 2 bytes).
+
+    RegisterRequest:
+      type: object
+      required: [ email, password ]
+      properties:
+        email:
+          $ref: '#/components/schemas/Email'
+        password:
+          $ref: '#/components/schemas/NewPassword'
+
+    LoginRequest:
+      type: object
+      required: [ email, password ]
+      properties:
+        email:
+          $ref: '#/components/schemas/Email'
+        password:
+          type: string
+          minLength: 1
+          maxLength: 72
+
+    ChangePasswordRequest:
+      type: object
+      required: [ currentPassword, newPassword ]
+      properties:
+        currentPassword:
+          type: string
+          minLength: 1
+          maxLength: 72
+        newPassword:
+          $ref: '#/components/schemas/NewPassword'
+
+    PasswordResetRequest:
+      type: object
+      required: [ email ]
+      properties:
+        email:
+          $ref: '#/components/schemas/Email'
+
+    PasswordResetConfirmRequest:
+      type: object
+      required: [ token, newPassword ]
+      properties:
+        token:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Token from the reset link
+        newPassword:
+          $ref: '#/components/schemas/NewPassword'
+
+    UpdateUserRequest:
+      type: object
+      description: At least one property must be set; enforced by the service.
+      properties:
+        role:
+          $ref: '#/components/schemas/UserRole'
+        active:
+          type: boolean
+
+    UserResponse:
+      type: object
+      required: [ id, email, role, active, createdAt ]
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        email:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+        active:
+          type: boolean
         createdAt:
           type: string
           format: date-time
