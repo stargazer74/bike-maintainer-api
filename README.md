@@ -53,7 +53,22 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
   `PATCH /api/v1/auth/me`; it is used for the UI, emails and the PDF report. `ErrorResponse.message` is technical
   (English) and not meant for display.
 
+## Operating Modes ##
+
++ The service runs in one of two modes, reported by the public `GET /api/v1/config` (`mode`):
+  + `portal` (default): public internet operation with the account-based authentication described above.
+  + `household`: private operation in a trusted home network. There are no passwords; people pick a profile via
+    `/api/v1/profiles/{profileId}/select`, which starts the same kind of session as a login. Profiles only separate
+    the vehicles of the household members for clarity – they are not a security boundary.
++ Mode-specific endpoints answer **404** in the other mode: `Profiles` exist only in `household`; registration,
+  email verification, login, password and admin endpoints exist only in `portal`. `me` and `logout` exist in both.
++ Household profiles have a `displayName` (unique, 1–50 characters) but no email, so `UserResponse.email` is
+  optional. A profile can only be deleted while it has no vehicles (**409** otherwise).
+
 ## Resources ##
+
++ **Config** (`/api/v1/config`) – Public configuration of the service, currently the operating mode.
++ **Profiles** (`/api/v1/profiles`) – List, create, rename, delete and select household profiles (household mode only).
 
 + **Auth** (`/api/v1/auth/...`) – `register`, `verify-email` and `verify-email/resend`, `login`, `logout`, `me`
   (current user), `password` (change password), `password-reset/request` and `password-reset/confirm` (reset via
