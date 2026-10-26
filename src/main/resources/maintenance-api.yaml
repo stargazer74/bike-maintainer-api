@@ -14,12 +14,28 @@ info:
     CSRF protection: the server sets an `XSRF-TOKEN` cookie; every state-changing request
     (POST/PUT/PATCH/DELETE) must echo its value in the `X-XSRF-TOKEN` header, otherwise it is
     rejected with 403.
-  version: 2.0.0
+
+
+    Operating modes: the service runs either as `portal` (default; public internet operation with the
+    account-based authentication described above) or as `household` (private use in a trusted home
+    network without passwords). The client asks `GET /api/v1/config` for the mode at startup. In
+    `household` mode, people pick a profile (`/api/v1/profiles`) instead of logging in; selecting a
+    profile starts the same kind of session as a login, so all other endpoints behave identically.
+    Profile endpoints exist only in `household` mode (404 in `portal`); registration, email
+    verification, login, password and admin endpoints exist only in `portal` mode (404 in
+    `household`).
+  version: 2.1.0
 tags:
   - name: Auth
-    description: Registration, login/logout and account management of the current user
+    description: >-
+      Registration, login/logout and account management of the current user. In household mode only
+      `me` and `logout` are available; all other Auth endpoints answer 404.
   - name: Admin
-    description: User administration (requires role ADMIN)
+    description: User administration (requires role ADMIN; portal mode only)
+  - name: Config
+    description: Public configuration of the running service (e.g. operating mode)
+  - name: Profiles
+    description: Profile selection without password (household mode only)
   - name: Vehicles
   - name: MaintenanceTasks
   - name: MaintenanceLogs
@@ -602,6 +618,132 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/config:
+    get:
+      tags: [ Config ]
+      operationId: getAppConfig
+      summary: Get the public configuration of the service (operating mode)
+      description: >-
+        Available in both modes without a session. The response also sets the `XSRF-TOKEN` cookie
+        needed for subsequent state-changing requests.
+      security: [ ]
+      responses:
+        '200':
+          description: Configuration of the service
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppConfigResponse'
+
+  /api/v1/profiles:
+    get:
+      tags: [ Profiles ]
+      operationId: listProfiles
+      summary: List all profiles (household mode only)
+      description: Sorted by display name. Answers 404 in portal mode.
+      security: [ ]
+      responses:
+        '200':
+          description: List of profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProfileResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [ Profiles ]
+      operationId: createProfile
+      summary: Create a profile (household mode only)
+      description: Answers 409 if the display name is already taken and 404 in portal mode.
+      security: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileRequest'
+      responses:
+        '201':
+          description: Profile created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/profiles/{profileId}:
+    parameters:
+      - $ref: '#/components/parameters/ProfileId'
+    put:
+      tags: [ Profiles ]
+      operationId: updateProfile
+      summary: Rename a profile (household mode only)
+      description: Answers 409 if the display name is already taken by another profile.
+      security: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileRequest'
+      responses:
+        '200':
+          description: Profile renamed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [ Profiles ]
+      operationId: deleteProfile
+      summary: Delete a profile (household mode only)
+      description: >-
+        Only profiles without vehicles can be deleted; otherwise 409, so that no data is lost
+        unnoticed. Sessions of the deleted profile become invalid.
+      security: [ ]
+      responses:
+        '204':
+          description: Profile deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/profiles/{profileId}/select:
+    parameters:
+      - $ref: '#/components/parameters/ProfileId'
+    post:
+      tags: [ Profiles ]
+      operationId: selectProfile
+      summary: Use the app as this profile (household mode only)
+      description: >-
+        Starts a session for the profile, just like a login does: the session cookie is set and the
+        session ID and CSRF token are renewed. An existing session of another profile is replaced.
+      security: [ ]
+      responses:
+        '200':
+          description: Profile selected; the session cookie is set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
   securitySchemes:
     cookieAuth:
@@ -643,6 +785,14 @@ components:
         type: integer
         format: int64
         minimum: 1
+    ProfileId:
+      name: profileId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
 
   responses:
     BadRequest:
@@ -665,6 +815,12 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     Forbidden:
       description: Logged in but not permitted (e.g. missing role ADMIN or missing CSRF token)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Request conflicts with the current state (e.g. name already taken, resource still in use)
       content:
         application/json:
           schema:
@@ -1019,7 +1175,7 @@ components:
 
     UserResponse:
       type: object
-      required: [ id, email, role, active, emailVerified, language, createdAt ]
+      required: [ id, role, active, emailVerified, language, createdAt ]
       properties:
         id:
           type: integer
@@ -1027,6 +1183,10 @@ components:
           readOnly: true
         email:
           type: string
+          description: Missing for household profiles, which have no email address.
+        displayName:
+          type: string
+          description: Name shown in the UI; set for household profiles.
         role:
           $ref: '#/components/schemas/UserRole'
         language:
@@ -1040,6 +1200,44 @@ components:
           type: string
           format: date-time
           readOnly: true
+
+    OperatingMode:
+      type: string
+      enum: [ portal, household ]
+      description: >-
+        `portal`: public operation with accounts (email + password). `household`: private operation
+        in a trusted network with profile selection and without passwords.
+
+    AppConfigResponse:
+      type: object
+      required: [ mode ]
+      properties:
+        mode:
+          $ref: '#/components/schemas/OperatingMode'
+
+    DisplayName:
+      type: string
+      minLength: 1
+      maxLength: 50
+      description: Stored trimmed; must not be blank and is unique (compared case-insensitively).
+
+    ProfileRequest:
+      type: object
+      required: [ displayName ]
+      properties:
+        displayName:
+          $ref: '#/components/schemas/DisplayName'
+
+    ProfileResponse:
+      type: object
+      required: [ id, displayName ]
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        displayName:
+          type: string
 
     ErrorResponse:
       type: object
