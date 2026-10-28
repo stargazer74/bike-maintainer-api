@@ -24,7 +24,14 @@ info:
     Profile endpoints exist only in `household` mode (404 in `portal`); registration, email
     verification, login, password and admin endpoints exist only in `portal` mode (404 in
     `household`).
-  version: 2.1.0
+
+
+    Bot protection: endpoints that send emails to an address entered by the client (`register`,
+    `verify-email/resend`, `password-reset/request`) require a solved ALTCHA proof-of-work challenge
+    (`GET /api/v1/auth/challenge`, self-hosted, no third party) in the `altcha` field. All emails count
+    towards a global daily limit; when it is reached these endpoints answer 429 with code
+    `MAIL_QUOTA_EXCEEDED` for every email alike.
+  version: 2.2.0
 tags:
   - name: Auth
     description: >-
@@ -349,6 +356,33 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /api/v1/auth/challenge:
+    get:
+      tags: [ Auth ]
+      operationId: getAuthChallenge
+      summary: Get an ALTCHA proof-of-work challenge (portal mode only)
+      description: >-
+        Returns a signed ALTCHA challenge (protocol v2) for the ALTCHA widget. The client passes the
+        response to the widget unchanged; the widget solves it in the browser and produces the
+        base64 payload that `register`, `verify-email/resend` and `password-reset/request` expect in
+        their `altcha` field. A challenge expires after a few minutes and its solution can be used
+        only once. 404 in household mode.
+      security: [ ]
+      responses:
+        '200':
+          description: A new challenge
+          headers:
+            Cache-Control:
+              description: Always `no-store` – every request needs a fresh challenge
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AltchaChallenge'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/auth/register:
     post:
       tags: [ Auth ]
@@ -360,6 +394,12 @@ paths:
         created and a verification link (valid 24 hours) is sent; the user can log in only after
         verifying. For an already registered email, the owner receives a notice email instead and
         the existing account is left unchanged.
+
+
+        Bot protection: `altcha` must contain a solved, unexpired and unused challenge, otherwise 400
+        with code `CAPTCHA_INVALID`. If the honeypot field `website` is filled in, the service answers
+        202 as usual but creates no account and sends no email. When the daily email limit is
+        reached, the answer is 429 with code `MAIL_QUOTA_EXCEEDED`, regardless of the email.
       security: [ ]
       requestBody:
         required: true
@@ -401,7 +441,9 @@ paths:
       summary: Send the verification email again
       description: >-
         Always answers 204. A new link is sent only if an unverified account with this email
-        exists; previously sent links become invalid.
+        exists; previously sent links become invalid. Requires a solved ALTCHA challenge in `altcha`
+        (400 `CAPTCHA_INVALID` otherwise) and counts towards the daily email limit (429
+        `MAIL_QUOTA_EXCEEDED`).
       security: [ ]
       requestBody:
         required: true
@@ -530,7 +572,9 @@ paths:
       description: >-
         Always answers 204, regardless of whether an account with this email exists, so that
         registered email addresses cannot be discovered. If an active account exists, a reset link
-        valid for one hour is sent by email.
+        valid for one hour is sent by email. Requires a solved ALTCHA challenge in `altcha` (400
+        `CAPTCHA_INVALID` otherwise) and counts towards the daily email limit (429
+        `MAIL_QUOTA_EXCEEDED`).
       security: [ ]
       requestBody:
         required: true
@@ -826,7 +870,10 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     TooManyRequests:
-      description: Rate limit exceeded
+      description: >-
+        Rate limit exceeded: too many attempts from this IP address or on this account (no `code`),
+        or the global daily email limit is reached (`code: MAIL_QUOTA_EXCEEDED`, independent of the
+        email address).
       headers:
         Retry-After:
           description: Seconds until the next attempt is allowed
@@ -1093,7 +1140,7 @@ components:
 
     RegisterRequest:
       type: object
-      required: [ email, password ]
+      required: [ email, password, altcha ]
       properties:
         email:
           $ref: '#/components/schemas/Email'
@@ -1105,6 +1152,14 @@ components:
             Language of the new account (the client sends its current UI language). If omitted,
             the service derives it from `Accept-Language`, falling back to `de`. The verification
             email is sent in this language.
+        altcha:
+          $ref: '#/components/schemas/AltchaPayload'
+        website:
+          type: string
+          maxLength: 255
+          description: >-
+            Honeypot against bots. Clients render it invisible to humans and always send it empty
+            (or omit it). If it contains anything, the request is accepted with 202 but ignored.
 
     UpdateCurrentUserRequest:
       type: object
@@ -1137,10 +1192,12 @@ components:
 
     EmailRequest:
       type: object
-      required: [ email ]
+      required: [ email, altcha ]
       properties:
         email:
           $ref: '#/components/schemas/Email'
+        altcha:
+          $ref: '#/components/schemas/AltchaPayload'
 
     TokenRequest:
       type: object
@@ -1208,6 +1265,34 @@ components:
         `portal`: public operation with accounts (email + password). `household`: private operation
         in a trusted network with profile selection and without passwords.
 
+    AltchaChallenge:
+      type: object
+      additionalProperties: true
+      description: >-
+        ALTCHA challenge (protocol v2) as produced by the ALTCHA server library: `parameters`
+        (algorithm, nonce, salt, cost, keyLength, keyPrefix, expiresAt, …) and an HMAC `signature`
+        over them. Deliberately not modelled field by field: clients must pass it to the ALTCHA
+        widget unchanged, because any re-serialisation (e.g. added null fields) breaks the
+        signature.
+      example:
+        parameters:
+          algorithm: PBKDF2/SHA-256
+          nonce: 6f1a2b3c4d5e6f708192a3b4c5d6e7f8
+          salt: 0a1b2c3d4e5f60718293a4b5c6d7e8f9
+          cost: 5000
+          keyLength: 32
+          keyPrefix: '00'
+          expiresAt: 1761660000
+        signature: 3c9f0e…
+
+    AltchaPayload:
+      type: string
+      minLength: 1
+      maxLength: 4096
+      description: >-
+        Base64-encoded solution produced by the ALTCHA widget for a challenge from
+        `GET /api/v1/auth/challenge`. Valid only once and only until the challenge expires.
+
     AppConfigResponse:
       type: object
       required: [ mode ]
@@ -1252,8 +1337,10 @@ components:
         code:
           type: string
           description: >-
-            Optional machine-readable error code for cases the client handles specifically,
-            e.g. `EMAIL_NOT_VERIFIED`, `ACCOUNT_DISABLED`.
+            Optional machine-readable error code for cases the client handles specifically:
+            `EMAIL_NOT_VERIFIED`, `ACCOUNT_DISABLED` (403 on login), `CAPTCHA_INVALID` (400: the
+            `altcha` solution is missing, invalid, expired or already used) and
+            `MAIL_QUOTA_EXCEEDED` (429: the daily email limit is reached).
         message:
           type: string
           description: >-
