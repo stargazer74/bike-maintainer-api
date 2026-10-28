@@ -45,6 +45,15 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
 + No account enumeration: `register`, `verify-email/resend` and `password-reset/request` always answer the same,
   whether the email is registered or not; failed logins and account lockout are indistinguishable from wrong
   credentials / the IP rate limit.
++ Bot protection (the portal is open to the public): endpoints that send emails to an address entered by the client
+  (`register`, `verify-email/resend`, `password-reset/request`) require an `altcha` field with a solved ALTCHA
+  proof-of-work challenge from `GET /api/v1/auth/challenge` (protocol v2, self-hosted, no third party; one-time use,
+  expires after a few minutes) – otherwise **400** with `code: CAPTCHA_INVALID`. The challenge is an opaque object
+  (`AltchaChallenge`) that clients hand to the ALTCHA widget unchanged. `RegisterRequest.website` is a honeypot:
+  filled in → 202 as usual, but nothing happens.
++ Daily email limit: all emails together count towards a global daily limit; when it is reached, the endpoints above
+  answer **429** with `code: MAIL_QUOTA_EXCEEDED` – identically for known and unknown addresses. A 429 without code
+  is the per-IP/per-account rate limit.
 + CSRF: the server sets an `XSRF-TOKEN` cookie that state-changing requests must echo in the `X-XSRF-TOKEN` header.
 + Every vehicle belongs to one user. Resources of other users are answered with **404** (not 403), so that existing
   IDs cannot be probed. Missing/expired login is **401**, missing role or CSRF token is **403**.
@@ -61,7 +70,7 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
     `/api/v1/profiles/{profileId}/select`, which starts the same kind of session as a login. Profiles only separate
     the vehicles of the household members for clarity – they are not a security boundary.
 + Mode-specific endpoints answer **404** in the other mode: `Profiles` exist only in `household`; registration,
-  email verification, login, password and admin endpoints exist only in `portal`. `me` and `logout` exist in both.
+  email verification (incl. the ALTCHA `challenge`), login, password and admin endpoints exist only in `portal`. `me` and `logout` exist in both.
 + Household profiles have a `displayName` (unique, 1–50 characters) but no email, so `UserResponse.email` is
   optional. A profile can only be deleted while it has no vehicles (**409** otherwise).
 
@@ -70,7 +79,7 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
 + **Config** (`/api/v1/config`) – Public configuration of the service, currently the operating mode.
 + **Profiles** (`/api/v1/profiles`) – List, create, rename, delete and select household profiles (household mode only).
 
-+ **Auth** (`/api/v1/auth/...`) – `register`, `verify-email` and `verify-email/resend`, `login`, `logout`, `me`
++ **Auth** (`/api/v1/auth/...`) – `challenge` (ALTCHA), `register`, `verify-email` and `verify-email/resend`, `login`, `logout`, `me`
   (current user), `password` (change password), `password-reset/request` and `password-reset/confirm` (reset via
   emailed token).
 + **Admin** (`/api/v1/admin/users`) – List users and change their role/active state (role `ADMIN` only).
