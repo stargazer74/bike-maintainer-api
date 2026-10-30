@@ -1234,7 +1234,8 @@ components:
           maxLength: 100
         quantity:
           type: number
-          exclusiveMinimum: 0
+          minimum: 0
+          exclusiveMinimum: true
           maximum: 999999.999
           multipleOf: 0.001
           description: Amount in `unit` (greater than 0, at most 3 decimal places)
@@ -1265,7 +1266,8 @@ components:
           maxLength: 100
         quantity:
           type: number
-          exclusiveMinimum: 0
+          minimum: 0
+          exclusiveMinimum: true
           maximum: 999999.999
           multipleOf: 0.001
           description: Amount in `unit`
