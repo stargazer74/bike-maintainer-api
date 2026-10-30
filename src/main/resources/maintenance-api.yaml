@@ -1246,7 +1246,7 @@ components:
           minimum: 0
           maximum: 99999.99
           multipleOf: 0.01
-          description: Price in the currency of the log (at most 2 decimal places)
+          description: Total price of this material line in the currency of the log, not a unit price (at most 2 decimal places)
         taskId:
           type: integer
           format: int64
@@ -1278,7 +1278,7 @@ components:
           minimum: 0
           maximum: 99999.99
           multipleOf: 0.01
-          description: Price in the currency of the log
+          description: Total price of this material line in the currency of the log, not a unit price
         taskId:
           type: integer
           format: int64
@@ -1367,7 +1367,7 @@ components:
           multipleOf: 0.01
           readOnly: true
           description: >-
-            Sum of the material prices (price times quantity, rounded to 2 decimal places) and the labor cost.
+            Sum of the material prices (each the total of its line) and the labor cost.
             Missing if the log has neither prices nor labor cost.
         createdAt:
           type: string
