@@ -31,7 +31,7 @@ info:
     (`GET /api/v1/auth/challenge`, self-hosted, no third party) in the `altcha` field. All emails count
     towards a global daily limit; when it is reached these endpoints answer 429 with code
     `MAIL_QUOTA_EXCEEDED` for every email alike.
-  version: 2.5.1
+  version: 2.6.0
 tags:
   - name: Auth
     description: >-
@@ -342,6 +342,31 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /api/v1/vehicles/{vehicleId}/cost-summary:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+    get:
+      tags: [ MaintenanceLogs ]
+      operationId: getCostSummary
+      summary: Get the maintenance costs of a vehicle per currency
+      description: >-
+        Sums up `totalCost` of all maintenance logs of the vehicle, separately per currency that occurs.
+        Logs without a `totalCost` are not counted. `currentYear` only covers logs performed in the current
+        calendar year. Empty if the vehicle has no costs.
+      responses:
+        '200':
+          description: One entry per occurring currency
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CostSummaryEntry'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /api/v1/vehicles/{vehicleId}/maintenance-report:
     parameters:
       - $ref: '#/components/parameters/VehicleId'
@@ -604,7 +629,7 @@ paths:
     patch:
       tags: [ Auth ]
       operationId: updateCurrentUser
-      summary: Update settings of the currently logged-in user (e.g. preferred language)
+      summary: Update settings of the currently logged-in user (preferred language and/or currency; at least one)
       requestBody:
         required: true
         content:
@@ -1172,6 +1197,108 @@ components:
             `performedTaskIds`.
           items:
             $ref: '#/components/schemas/NewMaintenanceTaskRequest'
+        materials:
+          type: array
+          maxItems: 50
+          description: >-
+            Materials used (parts, oil, ...). When updating, this list replaces the previous one. A material's
+            `taskId` must be contained in `performedTaskIds` (400 otherwise).
+          items:
+            $ref: '#/components/schemas/MaintenanceMaterialRequest'
+        laborCost:
+          type: number
+          minimum: 0
+          maximum: 99999.99
+          multipleOf: 0.01
+          description: Labor cost in the currency of the log (at most 2 decimal places)
+
+    MaterialUnit:
+      type: string
+      enum: [ PIECE, LITER, MILLILITER, KILOGRAM, GRAM, METER ]
+
+    Currency:
+      type: string
+      enum: [ EUR, CHF, GBP, USD, SEK, NOK, DKK, PLN, CZK ]
+      description: ISO 4217 currency code. New users start with `EUR`.
+
+    MaintenanceMaterialRequest:
+      type: object
+      required: [ name, quantity, unit ]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        partNumber:
+          type: string
+          maxLength: 100
+        quantity:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 999999.999
+          multipleOf: 0.001
+          description: Amount in `unit` (greater than 0, at most 3 decimal places)
+        unit:
+          $ref: '#/components/schemas/MaterialUnit'
+        price:
+          type: number
+          minimum: 0
+          maximum: 99999.99
+          multipleOf: 0.01
+          description: Total price of this material line in the currency of the log, not a unit price (at most 2 decimal places)
+        taskId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Optional performed task this material belongs to; must be contained in `performedTaskIds`
+
+    MaintenanceMaterialResponse:
+      type: object
+      required: [ name, quantity, unit ]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        partNumber:
+          type: string
+          maxLength: 100
+        quantity:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 999999.999
+          multipleOf: 0.001
+          description: Amount in `unit`
+        unit:
+          $ref: '#/components/schemas/MaterialUnit'
+        price:
+          type: number
+          minimum: 0
+          maximum: 99999.99
+          multipleOf: 0.01
+          description: Total price of this material line in the currency of the log, not a unit price
+        taskId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Performed task this material belongs to, if any
+
+    CostSummaryEntry:
+      type: object
+      required: [ currency, total, currentYear ]
+      properties:
+        currency:
+          $ref: '#/components/schemas/Currency'
+        total:
+          type: number
+          multipleOf: 0.01
+          description: Sum of all log costs in this currency
+        currentYear:
+          type: number
+          multipleOf: 0.01
+          description: Sum of the log costs in this currency for logs performed in the current calendar year
 
     NewMaintenanceTaskRequest:
       type: object
@@ -1199,7 +1326,7 @@ components:
 
     MaintenanceLogResponse:
       type: object
-      required: [ id, vehicleId, performedAt, mileageAtPerformed, createdAt ]
+      required: [ id, vehicleId, performedAt, mileageAtPerformed, currency, materials, createdAt ]
       properties:
         id:
           type: integer
@@ -1221,6 +1348,27 @@ components:
           items:
             type: integer
             format: int64
+        materials:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaintenanceMaterialResponse'
+        laborCost:
+          type: number
+          minimum: 0
+          maximum: 99999.99
+          multipleOf: 0.01
+          description: Labor cost in the currency of the log
+        currency:
+          $ref: '#/components/schemas/Currency'
+          readOnly: true
+          description: Currency of all amounts of this log; taken from the user's currency when the log is created.
+        totalCost:
+          type: number
+          multipleOf: 0.01
+          readOnly: true
+          description: >-
+            Sum of the material prices (each the total of its line) and the labor cost.
+            Missing if the log has neither prices nor labor cost.
         createdAt:
           type: string
           format: date-time
@@ -1276,10 +1424,12 @@ components:
 
     UpdateCurrentUserRequest:
       type: object
-      required: [ language ]
+      minProperties: 1
       properties:
         language:
           $ref: '#/components/schemas/Language'
+        currency:
+          $ref: '#/components/schemas/Currency'
 
     LoginRequest:
       type: object
@@ -1345,7 +1495,7 @@ components:
 
     UserResponse:
       type: object
-      required: [ id, role, active, emailVerified, language, createdAt ]
+      required: [ id, role, active, emailVerified, language, currency, createdAt ]
       properties:
         id:
           type: integer
@@ -1361,6 +1511,8 @@ components:
           $ref: '#/components/schemas/UserRole'
         language:
           $ref: '#/components/schemas/Language'
+        currency:
+          $ref: '#/components/schemas/Currency'
         active:
           type: boolean
         emailVerified:
