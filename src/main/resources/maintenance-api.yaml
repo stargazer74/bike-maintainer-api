@@ -31,7 +31,7 @@ info:
     (`GET /api/v1/auth/challenge`, self-hosted, no third party) in the `altcha` field. All emails count
     towards a global daily limit; when it is reached these endpoints answer 429 with code
     `MAIL_QUOTA_EXCEEDED` for every email alike.
-  version: 2.5.0
+  version: 2.5.1
 tags:
   - name: Auth
     description: >-
@@ -132,6 +132,7 @@ paths:
       tags: [ Vehicles ]
       operationId: deleteVehicle
       summary: Delete a vehicle
+      description: Deletes the vehicle together with all its maintenance tasks and maintenance logs.
       responses:
         '204':
           description: Vehicle deleted
@@ -230,11 +231,16 @@ paths:
       tags: [ MaintenanceTasks ]
       operationId: deleteMaintenanceTask
       summary: Delete a maintenance task
+      description: >-
+        Only tasks that were never performed can be deleted; otherwise 409, so that the maintenance
+        history stays complete. Such tasks can be deactivated instead (`active: false`).
       responses:
         '204':
           description: Maintenance task deleted
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
