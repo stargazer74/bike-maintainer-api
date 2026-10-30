@@ -31,7 +31,7 @@ info:
     (`GET /api/v1/auth/challenge`, self-hosted, no third party) in the `altcha` field. All emails count
     towards a global daily limit; when it is reached these endpoints answer 429 with code
     `MAIL_QUOTA_EXCEEDED` for every email alike.
-  version: 2.3.0
+  version: 2.4.0
 tags:
   - name: Auth
     description: >-
@@ -343,14 +343,40 @@ paths:
       tags: [ MaintenanceLogs ]
       operationId: downloadMaintenanceReport
       summary: Download the maintenance report (history) of a vehicle as PDF
+      description: >-
+        Report of the performed maintenance of a vehicle: all entries, or only the ones selected via
+        `logId`. The entries are always in chronological order, regardless of the order of the IDs.
+        Texts are in the language of the vehicle owner.
+
+
+        Every selected entry must belong to the vehicle; otherwise 400. Duplicate IDs are ignored. The
+        file name in `Content-Disposition` is `maintenance-report-vehicle-{vehicleId}.pdf`, for a single
+        entry `maintenance-report-vehicle-{vehicleId}-{performedAt}.pdf`.
+      parameters:
+        - name: logId
+          in: query
+          required: false
+          description: IDs of the maintenance log entries to put in the report; without it, all entries
+          style: form
+          explode: true
+          schema:
+            type: array
+            minItems: 1
+            maxItems: 500
+            items:
+              type: integer
+              format: int64
+              minimum: 1
       responses:
         '200':
-          description: Maintenance report as PDF file
+          description: Maintenance report as PDF file (file name in `Content-Disposition`)
           content:
             application/pdf:
               schema:
                 type: string
                 format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
