@@ -31,7 +31,7 @@ info:
     (`GET /api/v1/auth/challenge`, self-hosted, no third party) in the `altcha` field. All emails count
     towards a global daily limit; when it is reached these endpoints answer 429 with code
     `MAIL_QUOTA_EXCEEDED` for every email alike.
-  version: 2.7.0
+  version: 2.8.0
 tags:
   - name: Auth
     description: >-
@@ -770,7 +770,7 @@ paths:
     get:
       tags: [ Config ]
       operationId: getAppConfig
-      summary: Get the public configuration of the service (operating mode)
+      summary: Get the public configuration of the service (operating mode, website address)
       description: >-
         Available in both modes without a session. The response also sets the `XSRF-TOKEN` cookie
         needed for subsequent state-changing requests.
@@ -1564,6 +1564,14 @@ components:
       properties:
         mode:
           $ref: '#/components/schemas/OperatingMode'
+        websiteUrl:
+          type: string
+          format: uri
+          example: https://www.example.com
+          description: >-
+            Address of the public website (landing page, legal notice, privacy policy), without a
+            trailing slash. Only set in portal mode and only if the operator configured it, otherwise
+            missing or null; clients show no links to the website without it.
 
     DisplayName:
       type: string
