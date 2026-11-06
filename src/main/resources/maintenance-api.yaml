@@ -31,13 +31,13 @@ info:
     (`GET /api/v1/auth/challenge`, self-hosted, no third party) in the `altcha` field. All emails count
     towards a global daily limit; when it is reached these endpoints answer 429 with code
     `MAIL_QUOTA_EXCEEDED` for every email alike.
-  version: 2.9.0
+  version: 2.10.0
 tags:
   - name: Auth
     description: >-
       Registration, login/logout and account management of the current user. In household mode only
-      `GET`/`PATCH me` and `logout` are available; all other Auth endpoints (including `DELETE me`)
-      answer 404.
+      `GET`/`PATCH me` and `logout` are available; all other Auth endpoints (including `DELETE me` and the
+      device endpoints) answer 404.
   - name: Admin
     description: User administration (requires role ADMIN; portal mode only)
   - name: Config
@@ -607,6 +607,9 @@ paths:
       tags: [ Auth ]
       operationId: logout
       summary: Log out and invalidate the current session
+      description: >-
+        If the session was started with a device token (`device-login` or `device-session`), that device is
+        removed as well, so the app has to log in again.
       responses:
         '204':
           description: Logged out
@@ -754,6 +757,118 @@ paths:
           description: Password reset
         '400':
           $ref: '#/components/responses/BadRequest'
+
+  /api/v1/auth/device-login:
+    post:
+      tags: [ Auth ]
+      operationId: deviceLogin
+      summary: Log in from an app and keep this device logged in (portal mode only)
+      description: >-
+        Same checks and errors as `login` (rate limit, account lockout, `EMAIL_NOT_VERIFIED`,
+        `ACCOUNT_DISABLED`). Additionally registers the device and returns a device token. When the session
+        expires, the app exchanges the token for a new session via `device-session`. A device stays registered
+        until it is not used for 90 days, the user logs out from it, removes it, changes or resets the password,
+        or deletes the account. A device can only be registered with email and password, never from an
+        existing session. Answers 404 in household mode.
+      security: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceLoginRequest'
+      responses:
+        '200':
+          description: Logged in; the session cookie is set and the device token returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceLoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: >-
+            Credentials are correct, but the account cannot be used: `code` is `EMAIL_NOT_VERIFIED` or
+            `ACCOUNT_DISABLED` (as for `login`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/auth/device-session:
+    post:
+      tags: [ Auth ]
+      operationId: createDeviceSession
+      summary: Start a new session with a device token (portal mode only)
+      description: >-
+        Exchanges the device token for a new session and returns a new device token; the old one becomes
+        invalid. Presenting an already exchanged token again removes the device (the token was probably copied).
+        Every rejection – unknown, expired, removed or reused token, deactivated or unverified account – answers
+        the same 401. Answers 404 in household mode.
+      security: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceSessionRequest'
+      responses:
+        '200':
+          description: New session started; the session cookie is set and a new device token returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceLoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/auth/devices:
+    get:
+      tags: [ Auth ]
+      operationId: listDevices
+      summary: List the devices that stay logged in for the current user (portal mode only)
+      responses:
+        '200':
+          description: Devices, most recently used first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeviceResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/auth/devices/{deviceId}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceId'
+    delete:
+      tags: [ Auth ]
+      operationId: deleteDevice
+      summary: Log out a device of the current user (portal mode only)
+      description: >-
+        Removes the device and ends the sessions started with it. Devices of other users are reported as 404.
+      responses:
+        '204':
+          description: Device removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /api/v1/admin/users:
     get:
@@ -967,6 +1082,14 @@ components:
         minimum: 1
     UserId:
       name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    DeviceId:
+      name: deviceId
       in: path
       required: true
       schema:
@@ -1492,6 +1615,63 @@ components:
           maxLength: 72
         newPassword:
           $ref: '#/components/schemas/NewPassword'
+
+    DeviceLoginRequest:
+      type: object
+      required: [ email, password, deviceName ]
+      properties:
+        email:
+          $ref: '#/components/schemas/Email'
+        password:
+          type: string
+          minLength: 1
+          maxLength: 72
+        deviceName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '\S'
+          description: Name shown in the device list, e.g. the model of the phone
+
+    DeviceSessionRequest:
+      type: object
+      required: [ deviceToken ]
+      properties:
+        deviceToken:
+          type: string
+          minLength: 43
+          maxLength: 43
+
+    DeviceLoginResponse:
+      type: object
+      required: [ user, deviceToken ]
+      properties:
+        user:
+          $ref: '#/components/schemas/UserResponse'
+        deviceToken:
+          type: string
+          description: >-
+            Secret of this device (256 random bits, Base64url without padding). Store it securely; it is
+            shown only in this response.
+
+    DeviceResponse:
+      type: object
+      required: [ id, name, createdAt, lastUsedAt, current ]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+        current:
+          type: boolean
+          description: True for the device that started the requesting session
 
     DeleteAccountRequest:
       type: object
