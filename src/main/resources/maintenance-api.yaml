@@ -1630,7 +1630,7 @@ components:
           type: string
           minLength: 1
           maxLength: 100
-          pattern: '\S'
+          pattern: '.*\S.*'
           description: Name shown in the device list, e.g. the model of the phone
 
     DeviceSessionRequest:
