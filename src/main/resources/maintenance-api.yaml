@@ -31,12 +31,13 @@ info:
     (`GET /api/v1/auth/challenge`, self-hosted, no third party) in the `altcha` field. All emails count
     towards a global daily limit; when it is reached these endpoints answer 429 with code
     `MAIL_QUOTA_EXCEEDED` for every email alike.
-  version: 2.8.0
+  version: 2.9.0
 tags:
   - name: Auth
     description: >-
       Registration, login/logout and account management of the current user. In household mode only
-      `me` and `logout` are available; all other Auth endpoints answer 404.
+      `GET`/`PATCH me` and `logout` are available; all other Auth endpoints (including `DELETE me`)
+      answer 404.
   - name: Admin
     description: User administration (requires role ADMIN; portal mode only)
   - name: Config
@@ -647,6 +648,45 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+    delete:
+      tags: [ Auth ]
+      operationId: deleteCurrentUser
+      summary: Permanently delete the account of the current user (portal mode only)
+      description: >-
+        Deletes the account together with all of its vehicles, maintenance tasks, maintenance logs and
+        costs, its open verification and reset tokens and all of its sessions (including the current
+        one). There is no undo. The current password confirms the deletion; a wrong password counts
+        as a failed login attempt (rate limit and account lockout, 429). The last active admin cannot
+        delete their own account (409). Answers 404 in household mode.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteAccountRequest'
+      responses:
+        '204':
+          description: Account deleted; the session cookie is no longer valid
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: The password is wrong (`code` is `WRONG_PASSWORD`) or the CSRF token is missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The user is the last active admin (`code` is `LAST_ADMIN`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /api/v1/auth/password:
     put:
@@ -1453,6 +1493,16 @@ components:
         newPassword:
           $ref: '#/components/schemas/NewPassword'
 
+    DeleteAccountRequest:
+      type: object
+      required: [ password ]
+      properties:
+        password:
+          type: string
+          minLength: 1
+          maxLength: 72
+          description: Current password of the user, confirms the deletion
+
     EmailRequest:
       type: object
       required: [ email, altcha ]
@@ -1613,7 +1663,8 @@ components:
             Optional machine-readable error code for cases the client handles specifically:
             `EMAIL_NOT_VERIFIED`, `ACCOUNT_DISABLED` (403 on login), `CAPTCHA_INVALID` (400: the
             `altcha` solution is missing, invalid, expired or already used) and
-            `MAIL_QUOTA_EXCEEDED` (429: the daily email limit is reached).
+            `MAIL_QUOTA_EXCEEDED` (429: the daily email limit is reached), `WRONG_PASSWORD` (403 on
+            account deletion) and `LAST_ADMIN` (409 on account deletion).
         message:
           type: string
           description: >-
