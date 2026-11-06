@@ -808,9 +808,11 @@ paths:
       summary: Start a new session with a device token (portal mode only)
       description: >-
         Exchanges the device token for a new session and returns a new device token; the old one becomes
-        invalid. Presenting an already exchanged token again removes the device (the token was probably copied).
-        Every rejection – unknown, expired, removed or reused token, deactivated or unverified account – answers
-        the same 401. Answers 404 in household mode.
+        invalid. Presenting an already exchanged token again removes the device and ends the sessions started
+        with it (the token was probably copied) – except within 60 seconds of the exchange, when it is only
+        rejected. Clients exchange one token at a time; after a 401 they re-read the stored token and retry once
+        if it changed in the meantime. Every rejection – unknown, expired, removed or reused token, deactivated
+        or unverified account – answers the same 401. Answers 404 in household mode.
       security: [ ]
       requestBody:
         required: true
