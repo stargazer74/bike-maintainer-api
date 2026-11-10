@@ -31,7 +31,7 @@ info:
     (`GET /api/v1/auth/challenge`, self-hosted, no third party) in the `altcha` field. All emails count
     towards a global daily limit; when it is reached these endpoints answer 429 with code
     `MAIL_QUOTA_EXCEEDED` for every email alike.
-  version: 2.10.0
+  version: 2.11.0
 tags:
   - name: Auth
     description: >-
@@ -47,6 +47,10 @@ tags:
   - name: Vehicles
   - name: MaintenanceTasks
   - name: MaintenanceLogs
+  - name: Worksheets
+    description: >-
+      Printable worksheets for measuring and adjustment work (e.g. valve clearance). A worksheet is an
+      empty form with a prefilled vehicle header; nothing is stored.
 security:
   - cookieAuth: [ ]
 paths:
@@ -449,6 +453,87 @@ paths:
       responses:
         '200':
           description: Checklist as PDF file (file name in `Content-Disposition`)
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/vehicles/{vehicleId}/worksheets:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+    get:
+      tags: [ Worksheets ]
+      operationId: listWorksheetTemplates
+      summary: List the worksheet templates available for a vehicle
+      description: >-
+        The templates that fit the vehicle type, in a fixed order (VALVE_CLEARANCE, BRAKES, CHAIN,
+        TIRES). Valve clearance is offered for MOTORCYCLE, CAR, QUAD and SCOOTER; chain for MOTORCYCLE,
+        BICYCLE, E_BIKE and QUAD; brakes and tires for every type.
+      responses:
+        '200':
+          description: Available templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorksheetTemplateResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/vehicles/{vehicleId}/worksheets/{template}:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+      - name: template
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/WorksheetTemplate'
+    get:
+      tags: [ Worksheets ]
+      operationId: downloadWorksheet
+      summary: Download an empty worksheet for a vehicle as PDF
+      description: >-
+        Empty worksheet to fill in by hand: vehicle, make/model, model year, current mileage and print
+        date at the top, the measuring fields of the template, and fields for date, mileage, "done by"
+        and notes at the bottom. Texts are in the language of the vehicle owner. Nothing is stored.
+
+
+        `cylinders` and `valvesPerCylinder` are required for VALVE_CLEARANCE and not allowed for the
+        other templates (400). A template that is not available for the vehicle type is answered with
+        400. The file name in `Content-Disposition` names the template, the vehicle and the print date in
+        the language of the vehicle owner (e.g. `worksheet-valve-clearance-red-one-2026-11-10.pdf`).
+      parameters:
+        - name: cylinders
+          in: query
+          required: false
+          description: Number of cylinders (VALVE_CLEARANCE only)
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 8
+        - name: valvesPerCylinder
+          in: query
+          required: false
+          description: Number of valves per cylinder (VALVE_CLEARANCE only)
+          schema:
+            type: integer
+            format: int32
+            minimum: 2
+            maximum: 4
+      responses:
+        '200':
+          description: Worksheet as PDF file (file name in `Content-Disposition`)
           content:
             application/pdf:
               schema:
@@ -1828,6 +1913,17 @@ components:
           readOnly: true
         displayName:
           type: string
+
+    WorksheetTemplate:
+      type: string
+      enum: [ VALVE_CLEARANCE, BRAKES, CHAIN, TIRES ]
+
+    WorksheetTemplateResponse:
+      type: object
+      required: [ template ]
+      properties:
+        template:
+          $ref: '#/components/schemas/WorksheetTemplate'
 
     ErrorResponse:
       type: object
