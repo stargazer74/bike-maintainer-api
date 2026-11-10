@@ -510,8 +510,8 @@ paths:
 
         `cylinders` and `valvesPerCylinder` are required for VALVE_CLEARANCE and not allowed for the
         other templates (400). A template that is not available for the vehicle type is answered with
-        400. The file name in `Content-Disposition` is `worksheet-{template}-vehicle-{vehicleId}.pdf`
-        with the template in lower case and hyphens (e.g. `worksheet-valve-clearance-vehicle-7.pdf`).
+        400. The file name in `Content-Disposition` names the template, the vehicle and the print date in
+        the language of the vehicle owner (e.g. `worksheet-valve-clearance-red-one-2026-11-10.pdf`).
       parameters:
         - name: cylinders
           in: query
