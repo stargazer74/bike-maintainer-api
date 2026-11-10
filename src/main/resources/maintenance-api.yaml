@@ -31,7 +31,7 @@ info:
     (`GET /api/v1/auth/challenge`, self-hosted, no third party) in the `altcha` field. All emails count
     towards a global daily limit; when it is reached these endpoints answer 429 with code
     `MAIL_QUOTA_EXCEEDED` for every email alike.
-  version: 2.11.0
+  version: 2.12.0
 tags:
   - name: Auth
     description: >-
@@ -47,6 +47,11 @@ tags:
   - name: Vehicles
   - name: MaintenanceTasks
   - name: MaintenanceLogs
+  - name: Measurements
+    description: >-
+      Target values of a vehicle (from the workshop manual), measured values of a maintenance log, and the
+      shim calculator for the valve clearance. Lengths are in mm (at most 3 decimal places), pressures in bar
+      (at most 2 decimal places).
   - name: Worksheets
     description: >-
       Printable worksheets for measuring and adjustment work (e.g. valve clearance). A worksheet is an
@@ -458,6 +463,117 @@ paths:
               schema:
                 type: string
                 format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/vehicles/{vehicleId}/specifications:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+    get:
+      tags: [ Measurements ]
+      operationId: getVehicleSpecifications
+      summary: Target values and engine data of a vehicle
+      description: All fields are optional; a vehicle without stored values returns an empty object.
+      responses:
+        '200':
+          description: Target values
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleSpecifications'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [ Measurements ]
+      operationId: updateVehicleSpecifications
+      summary: Replace the target values and engine data of a vehicle
+      description: >-
+        Replaces all values; a field that is left out is no longer stored. A minimum must not be greater
+        than its maximum (400).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleSpecifications'
+      responses:
+        '200':
+          description: Stored target values
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleSpecifications'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/vehicles/{vehicleId}/measurements/latest:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+    get:
+      tags: [ Measurements ]
+      operationId: getLatestMeasurements
+      summary: The most recent measurement of every template
+      description: >-
+        For each template the measurement of the latest maintenance log that has one (by `performedAt`,
+        then by log ID), with the log it comes from. Used to show previous values next to the input fields
+        and to prefill the old shims with the new shims of last time. Templates that were never measured
+        are left out.
+      responses:
+        '200':
+          description: Latest measurements
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LatestMeasurementsResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/vehicles/{vehicleId}/shim-calculation:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+    post:
+      tags: [ Measurements ]
+      operationId: calculateShims
+      summary: Suggest new shims for measured valve clearances
+      description: >-
+        Stateless, nothing is stored. Target range, shim step and available sizes come from the target
+        values of the vehicle. Per valve: target = middle of the target range of its kind (intake/exhaust),
+        ideal shim = old shim + (measured − target). The suggestion is the size on the grid of the shim
+        step (multiples of `shimStep`) whose resulting clearance (measured + old shim − new shim) lies in
+        the target range and is closest to the middle; on a tie the thicker shim (tighter clearance) wins.
+
+
+        `hint`: `NO_CHANGE_NEEDED` – the measured clearance is already in range, the suggestion is the old
+        shim; `NO_SHIM_IN_RANGE` – no grid size gives a clearance in range (step too coarse), the size
+        closest to the ideal is suggested; `OUTSIDE_AVAILABLE_SIZES` – the suggestion is smaller than
+        `shimMin` or greater than `shimMax`; `MISSING_INPUT` – measured value, old shim, target range or
+        shim step is missing, no suggestion; `NOT_SHIM_ADJUSTED` – the engine is adjusted by screw
+        (`valveAdjustment` = SCREW), no suggestion. Results are in the order of the request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShimCalculationRequest'
+      responses:
+        '200':
+          description: One result per valve
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShimCalculationResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -1461,6 +1577,8 @@ components:
           maximum: 99999.99
           multipleOf: 0.01
           description: Labor cost in the currency of the log (at most 2 decimal places)
+        measurements:
+          $ref: '#/components/schemas/MaintenanceMeasurementsRequest'
 
     MaterialUnit:
       type: string
@@ -1619,6 +1737,8 @@ components:
           description: >-
             Sum of the material prices (each the total of its line) and the labor cost.
             Missing if the log has neither prices nor labor cost.
+        measurements:
+          $ref: '#/components/schemas/MaintenanceMeasurementsResponse'
         createdAt:
           type: string
           format: date-time
@@ -1913,6 +2033,579 @@ components:
           readOnly: true
         displayName:
           type: string
+
+    ValveAdjustment:
+      type: string
+      description: How the valve clearance is set – with shims (bucket) or with an adjusting screw.
+      enum: [ SHIM, SCREW ]
+
+    ValveKind:
+      type: string
+      enum: [ INTAKE, EXHAUST ]
+
+    MeasurementStatus:
+      type: string
+      description: >-
+        Measured value against the current target values of the vehicle (computed when read, not stored):
+        `OK`, `OUT_OF_RANGE`, or `UNKNOWN` if no value was measured or no target value is stored.
+      enum: [ OK, OUT_OF_RANGE, UNKNOWN ]
+
+    VehicleSpecifications:
+      type: object
+      description: Target values from the workshop manual; all optional. Lengths in mm, pressures in bar.
+      properties:
+        cylinders:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 8
+        valvesPerCylinder:
+          type: integer
+          format: int32
+          minimum: 2
+          maximum: 4
+        valveAdjustment:
+          $ref: '#/components/schemas/ValveAdjustment'
+        intakeClearanceMin:
+          type: number
+          minimum: 0
+          maximum: 9.999
+          multipleOf: 0.001
+          description: Valve clearance intake, lower limit
+        intakeClearanceMax:
+          type: number
+          minimum: 0
+          maximum: 9.999
+          multipleOf: 0.001
+          description: Valve clearance intake, upper limit
+        exhaustClearanceMin:
+          type: number
+          minimum: 0
+          maximum: 9.999
+          multipleOf: 0.001
+          description: Valve clearance exhaust, lower limit
+        exhaustClearanceMax:
+          type: number
+          minimum: 0
+          maximum: 9.999
+          multipleOf: 0.001
+          description: Valve clearance exhaust, upper limit
+        shimStep:
+          type: number
+          minimum: 0.001
+          maximum: 1
+          multipleOf: 0.001
+          description: Step between the available shim sizes, e.g. 0.025 or 0.05
+        shimMin:
+          type: number
+          minimum: 0
+          maximum: 99.999
+          multipleOf: 0.001
+          description: Smallest available shim
+        shimMax:
+          type: number
+          minimum: 0
+          maximum: 99.999
+          multipleOf: 0.001
+          description: Largest available shim
+        brakePadMinFront:
+          type: number
+          minimum: 0
+          maximum: 999.999
+          multipleOf: 0.001
+          description: Minimum brake pad thickness front
+        brakePadMinRear:
+          type: number
+          minimum: 0
+          maximum: 999.999
+          multipleOf: 0.001
+          description: Minimum brake pad thickness rear
+        brakeDiscMinFront:
+          type: number
+          minimum: 0
+          maximum: 999.999
+          multipleOf: 0.001
+          description: Minimum brake disc thickness front
+        brakeDiscMinRear:
+          type: number
+          minimum: 0
+          maximum: 999.999
+          multipleOf: 0.001
+          description: Minimum brake disc thickness rear
+        chainSlackMin:
+          type: number
+          minimum: 0
+          maximum: 999.999
+          multipleOf: 0.001
+          description: Chain slack, lower limit
+        chainSlackMax:
+          type: number
+          minimum: 0
+          maximum: 999.999
+          multipleOf: 0.001
+          description: Chain slack, upper limit
+        chainWearLinks:
+          type: integer
+          format: int32
+          minimum: 2
+          maximum: 200
+          description: Number of links the wear length is measured over
+        chainWearMaxLength:
+          type: number
+          minimum: 0
+          maximum: 999.999
+          multipleOf: 0.001
+          description: 'Wear limit: maximum length over `chainWearLinks` links'
+        tirePressureFront:
+          type: number
+          minimum: 0
+          maximum: 10
+          multipleOf: 0.01
+          description: Target tyre pressure front
+        tirePressureRear:
+          type: number
+          minimum: 0
+          maximum: 10
+          multipleOf: 0.01
+          description: Target tyre pressure rear
+        treadDepthMin:
+          type: number
+          minimum: 0
+          maximum: 99.999
+          multipleOf: 0.001
+          description: Minimum tread depth
+
+    MaintenanceMeasurementsRequest:
+      type: object
+      description: >-
+        Measured values of a maintenance log, at most one set per template. When updating a log, a given
+        object replaces all measurements of the log (a template that is left out is deleted); if
+        `measurements` is left out entirely, the stored measurements stay unchanged.
+      properties:
+        valveClearance:
+          $ref: '#/components/schemas/ValveClearanceMeasurementRequest'
+        brakes:
+          $ref: '#/components/schemas/BrakeMeasurementRequest'
+        chain:
+          $ref: '#/components/schemas/ChainMeasurementRequest'
+        tires:
+          $ref: '#/components/schemas/TireMeasurementRequest'
+
+    MaintenanceMeasurementsResponse:
+      type: object
+      description: Measured values of a maintenance log; templates without a measurement are left out.
+      properties:
+        valveClearance:
+          $ref: '#/components/schemas/ValveClearanceMeasurementResponse'
+        brakes:
+          $ref: '#/components/schemas/BrakeMeasurementResponse'
+        chain:
+          $ref: '#/components/schemas/ChainMeasurementResponse'
+        tires:
+          $ref: '#/components/schemas/TireMeasurementResponse'
+
+    ValveClearanceMeasurementRequest:
+      type: object
+      required: [ valves ]
+      properties:
+        valves:
+          type: array
+          minItems: 1
+          maxItems: 32
+          description: One entry per valve; each combination of cylinder, kind and index only once (400).
+          items:
+            $ref: '#/components/schemas/ValveMeasurementRequest'
+
+    ValveMeasurementRequest:
+      type: object
+      required: [ cylinder, valve, index ]
+      properties:
+        cylinder:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 8
+        valve:
+          $ref: '#/components/schemas/ValveKind'
+        index:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2
+          description: Number of the valve of this kind in the cylinder (1, or 1–2 with two of a kind)
+        measured:
+          type: number
+          minimum: 0
+          maximum: 9.999
+          multipleOf: 0.001
+          description: Measured clearance
+        shimOld:
+          type: number
+          minimum: 0
+          maximum: 99.999
+          multipleOf: 0.001
+          description: Shim installed before
+        shimNew:
+          type: number
+          minimum: 0
+          maximum: 99.999
+          multipleOf: 0.001
+          description: Shim installed now (left out if not changed)
+
+    ValveClearanceMeasurementResponse:
+      type: object
+      required: [ valves ]
+      properties:
+        valves:
+          type: array
+          description: Ordered by cylinder, then intake before exhaust, then index.
+          items:
+            $ref: '#/components/schemas/ValveMeasurementResponse'
+
+    ValveMeasurementResponse:
+      type: object
+      required: [ cylinder, valve, index, measuredStatus ]
+      properties:
+        cylinder:
+          type: integer
+          format: int32
+        valve:
+          $ref: '#/components/schemas/ValveKind'
+        index:
+          type: integer
+          format: int32
+        measured:
+          type: number
+        shimOld:
+          type: number
+        shimNew:
+          type: number
+        measuredStatus:
+          allOf:
+            - $ref: '#/components/schemas/MeasurementStatus'
+          readOnly: true
+          description: Measured clearance against the target range of the valve kind
+
+    BrakeMeasurementRequest:
+      type: object
+      properties:
+        padFront:
+          type: number
+          minimum: 0
+          maximum: 999.999
+          multipleOf: 0.001
+          description: Brake pad thickness front
+        padRear:
+          type: number
+          minimum: 0
+          maximum: 999.999
+          multipleOf: 0.001
+          description: Brake pad thickness rear
+        discFront:
+          type: number
+          minimum: 0
+          maximum: 999.999
+          multipleOf: 0.001
+          description: Brake disc thickness front
+        discRear:
+          type: number
+          minimum: 0
+          maximum: 999.999
+          multipleOf: 0.001
+          description: Brake disc thickness rear
+        discConditionFront:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Condition of the front disc (free text)
+        discConditionRear:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Condition of the rear disc (free text)
+        fluidCondition:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Brake fluid level, colour or age (free text)
+
+    BrakeMeasurementResponse:
+      type: object
+      required: [ padFrontStatus, padRearStatus, discFrontStatus, discRearStatus ]
+      properties:
+        padFront:
+          type: number
+        padRear:
+          type: number
+        discFront:
+          type: number
+        discRear:
+          type: number
+        discConditionFront:
+          type: string
+        discConditionRear:
+          type: string
+        fluidCondition:
+          type: string
+        padFrontStatus:
+          allOf:
+            - $ref: '#/components/schemas/MeasurementStatus'
+          readOnly: true
+          description: Against `brakePadMinFront`
+        padRearStatus:
+          allOf:
+            - $ref: '#/components/schemas/MeasurementStatus'
+          readOnly: true
+          description: Against `brakePadMinRear`
+        discFrontStatus:
+          allOf:
+            - $ref: '#/components/schemas/MeasurementStatus'
+          readOnly: true
+          description: Against `brakeDiscMinFront`
+        discRearStatus:
+          allOf:
+            - $ref: '#/components/schemas/MeasurementStatus'
+          readOnly: true
+          description: Against `brakeDiscMinRear`
+
+    ChainMeasurementRequest:
+      type: object
+      properties:
+        slack:
+          type: number
+          minimum: 0
+          maximum: 999.999
+          multipleOf: 0.001
+          description: Chain slack
+        wearLength:
+          type: number
+          minimum: 0
+          maximum: 999.999
+          multipleOf: 0.001
+          description: Measured length over `wearLinks` links
+        wearLinks:
+          type: integer
+          format: int32
+          minimum: 2
+          maximum: 200
+        sprocketCondition:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Condition of the front sprocket (free text)
+        rearSprocketCondition:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Condition of the rear sprocket (free text)
+        cleaned:
+          type: boolean
+        lubricated:
+          type: boolean
+
+    ChainMeasurementResponse:
+      type: object
+      required: [ slackStatus, wearLengthStatus ]
+      properties:
+        slack:
+          type: number
+        wearLength:
+          type: number
+        wearLinks:
+          type: integer
+          format: int32
+        sprocketCondition:
+          type: string
+        rearSprocketCondition:
+          type: string
+        cleaned:
+          type: boolean
+        lubricated:
+          type: boolean
+        slackStatus:
+          allOf:
+            - $ref: '#/components/schemas/MeasurementStatus'
+          readOnly: true
+          description: Against `chainSlackMin`–`chainSlackMax`
+        wearLengthStatus:
+          allOf:
+            - $ref: '#/components/schemas/MeasurementStatus'
+          readOnly: true
+          description: Against `chainWearMaxLength`; UNKNOWN if `wearLinks` differs from `chainWearLinks`
+
+    TireMeasurementRequest:
+      type: object
+      properties:
+        pressureFront:
+          type: number
+          minimum: 0
+          maximum: 10
+          multipleOf: 0.01
+          description: Tyre pressure front
+        pressureRear:
+          type: number
+          minimum: 0
+          maximum: 10
+          multipleOf: 0.01
+          description: Tyre pressure rear
+        treadFront:
+          type: number
+          minimum: 0
+          maximum: 99.999
+          multipleOf: 0.001
+          description: Tread depth front
+        treadRear:
+          type: number
+          minimum: 0
+          maximum: 99.999
+          multipleOf: 0.001
+          description: Tread depth rear
+        dotFront:
+          type: string
+          pattern: '^[0-9]{4}$'
+          description: DOT date code front (week and year, WWYY)
+        dotRear:
+          type: string
+          pattern: '^[0-9]{4}$'
+          description: DOT date code rear (week and year, WWYY)
+        conditionFront:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Condition of the front tyre (free text, e.g. cracks, foreign objects)
+        conditionRear:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Condition of the rear tyre (free text)
+
+    TireMeasurementResponse:
+      type: object
+      required: [ pressureFrontStatus, pressureRearStatus, treadFrontStatus, treadRearStatus ]
+      properties:
+        pressureFront:
+          type: number
+        pressureRear:
+          type: number
+        treadFront:
+          type: number
+        treadRear:
+          type: number
+        dotFront:
+          type: string
+        dotRear:
+          type: string
+        conditionFront:
+          type: string
+        conditionRear:
+          type: string
+        pressureFrontStatus:
+          allOf:
+            - $ref: '#/components/schemas/MeasurementStatus'
+          readOnly: true
+          description: Against `tirePressureFront`; OK within ±0.1 bar
+        pressureRearStatus:
+          allOf:
+            - $ref: '#/components/schemas/MeasurementStatus'
+          readOnly: true
+          description: Against `tirePressureRear`; OK within ±0.1 bar
+        treadFrontStatus:
+          allOf:
+            - $ref: '#/components/schemas/MeasurementStatus'
+          readOnly: true
+          description: Against `treadDepthMin`
+        treadRearStatus:
+          allOf:
+            - $ref: '#/components/schemas/MeasurementStatus'
+          readOnly: true
+          description: Against `treadDepthMin`
+
+    MeasurementSource:
+      type: object
+      required: [ logId, performedAt, mileageAtPerformed ]
+      properties:
+        logId:
+          type: integer
+          format: int64
+        performedAt:
+          type: string
+          format: date
+        mileageAtPerformed:
+          type: integer
+
+    LatestMeasurementsResponse:
+      type: object
+      required: [ measurements, sources ]
+      properties:
+        measurements:
+          $ref: '#/components/schemas/MaintenanceMeasurementsResponse'
+        sources:
+          type: object
+          description: The maintenance log each measurement comes from, with the same keys as `measurements`.
+          properties:
+            valveClearance:
+              $ref: '#/components/schemas/MeasurementSource'
+            brakes:
+              $ref: '#/components/schemas/MeasurementSource'
+            chain:
+              $ref: '#/components/schemas/MeasurementSource'
+            tires:
+              $ref: '#/components/schemas/MeasurementSource'
+
+    ShimCalculationRequest:
+      type: object
+      required: [ valves ]
+      properties:
+        valves:
+          type: array
+          minItems: 1
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/ShimCalculationInput'
+
+    ShimCalculationInput:
+      type: object
+      required: [ valve ]
+      properties:
+        valve:
+          $ref: '#/components/schemas/ValveKind'
+        measured:
+          type: number
+          minimum: 0
+          maximum: 9.999
+          multipleOf: 0.001
+          description: Measured clearance
+        shimOld:
+          type: number
+          minimum: 0
+          maximum: 99.999
+          multipleOf: 0.001
+          description: Shim installed before
+
+    ShimHint:
+      type: string
+      enum: [ NO_CHANGE_NEEDED, NO_SHIM_IN_RANGE, OUTSIDE_AVAILABLE_SIZES, MISSING_INPUT, NOT_SHIM_ADJUSTED ]
+
+    ShimCalculationResponse:
+      type: object
+      required: [ results ]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShimCalculationResult'
+
+    ShimCalculationResult:
+      type: object
+      properties:
+        suggestedShim:
+          type: number
+          description: Suggested new shim; missing with MISSING_INPUT and NOT_SHIM_ADJUSTED
+        resultingClearance:
+          type: number
+          description: Clearance with the suggested shim (measured + old shim − suggested shim)
+        hint:
+          $ref: '#/components/schemas/ShimHint'
 
     WorksheetTemplate:
       type: string
