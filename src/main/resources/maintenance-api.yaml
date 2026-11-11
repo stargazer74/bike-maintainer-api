@@ -31,7 +31,7 @@ info:
     (`GET /api/v1/auth/challenge`, self-hosted, no third party) in the `altcha` field. All emails count
     towards a global daily limit; when it is reached these endpoints answer 429 with code
     `MAIL_QUOTA_EXCEEDED` for every email alike.
-  version: 2.12.0
+  version: 2.13.0
 tags:
   - name: Auth
     description: >-
@@ -45,6 +45,12 @@ tags:
   - name: Profiles
     description: Profile selection without password (household mode only)
   - name: Vehicles
+  - name: VehicleExport
+    description: >-
+      Move a vehicle with its maintenance plan, history, measured values and target values to another
+      instance (e.g. from the portal to an own instance in household mode, or back). A file holds exactly
+      one vehicle; it contains no database IDs, no timestamps of the database and nothing about accounts or
+      profiles. Importing always creates a new vehicle owned by the current user or profile.
   - name: MaintenanceTasks
   - name: MaintenanceLogs
   - name: Measurements
@@ -148,6 +154,69 @@ paths:
           description: Vehicle deleted
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/vehicles/{vehicleId}/export:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+    get:
+      tags: [ VehicleExport ]
+      operationId: exportVehicle
+      summary: Export a vehicle as file
+      description: >-
+        The vehicle with its target values, all maintenance tasks (also inactive ones) and all maintenance
+        logs with materials and measured values, in the format `VehicleExport`. Sent as download: the file
+        name in `Content-Disposition` names the vehicle and the export date (e.g.
+        `vehicle-red-one-2026-11-11.json`). An unknown vehicle or one of another user is answered with 404.
+      responses:
+        '200':
+          description: Export file (file name in `Content-Disposition`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleExport'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/vehicles/import:
+    post:
+      tags: [ VehicleExport ]
+      operationId: importVehicle
+      summary: Create a vehicle from an export file
+      description: >-
+        The content of an export file is sent as JSON body (the client reads the file, e.g. to show a
+        preview first). Always creates a new vehicle owned by the current user or profile – nothing is
+        overwritten or merged, a vehicle with the same name may exist. Tasks, logs, materials, measured
+        values and target values are created with new IDs; the currency of each log is taken from the file.
+        All or nothing: if anything is invalid, nothing is created.
+
+
+        400 with `code: IMPORT_INVALID` and `details` (one entry per problem, e.g.
+        `vehicle.maintenanceLogs[3].mileageAtPerformed: must be greater than or equal to 0`) if the file
+        breaks a rule of this schema or of the normal requests (e.g. a log refers to an unknown task `ref`,
+        a task without interval that is not one-time). 400 with `code: IMPORT_FORMAT_UNSUPPORTED` if
+        `formatVersion` is unknown (a newer instance wrote the file). Files larger than 5 MB are answered
+        with 413.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleExport'
+      responses:
+        '201':
+          description: Vehicle created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -1335,6 +1404,12 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     Conflict:
       description: Request conflicts with the current state (e.g. name already taken, resource still in use)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PayloadTooLarge:
+      description: Request body too large (e.g. an import file over 5 MB)
       content:
         application/json:
           schema:
@@ -2618,6 +2693,183 @@ components:
         template:
           $ref: '#/components/schemas/WorksheetTemplate'
 
+    VehicleExport:
+      type: object
+      description: >-
+        Export file of one vehicle. Contains no database IDs: tasks have a key `ref` that is only valid
+        inside the file, logs and materials refer to tasks by it. The limits below also apply to the import.
+      required: [ formatVersion, exportedAt, vehicle ]
+      properties:
+        formatVersion:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Version of this file format; currently 1. Raised on incompatible changes.
+        exportedAt:
+          type: string
+          format: date-time
+        appVersion:
+          type: string
+          maxLength: 50
+          description: Version of the instance that wrote the file (informational)
+        vehicle:
+          $ref: '#/components/schemas/ExportedVehicle'
+
+    ExportedVehicle:
+      type: object
+      description: Master data as in `VehicleRequest`, plus target values, tasks and logs.
+      required: [ name, type, modelYear, firstRegistrationDate, currentMileage ]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        type:
+          $ref: '#/components/schemas/VehicleType'
+        make:
+          type: string
+          minLength: 1
+          maxLength: 100
+        model:
+          type: string
+          minLength: 1
+          maxLength: 100
+        modelYear:
+          type: integer
+          minimum: 1900
+          maximum: 2100
+        firstRegistrationDate:
+          type: string
+          format: date
+        currentMileage:
+          type: integer
+          minimum: 0
+        specifications:
+          $ref: '#/components/schemas/VehicleSpecifications'
+        maintenanceTasks:
+          type: array
+          maxItems: 200
+          description: All tasks, also inactive ones; each `ref` only once.
+          items:
+            $ref: '#/components/schemas/ExportedMaintenanceTask'
+        maintenanceLogs:
+          type: array
+          maxItems: 2000
+          items:
+            $ref: '#/components/schemas/ExportedMaintenanceLog'
+
+    ExportedMaintenanceTask:
+      type: object
+      description: >-
+        A task as in `MaintenanceTaskRequest`, plus its key `ref`. At least one of intervalKm or
+        intervalMonths unless oneTime is true.
+      required: [ ref, name ]
+      properties:
+        ref:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: Key of the task inside the file (e.g. `t1`), unique within the vehicle
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        intervalKm:
+          type: integer
+          minimum: 1
+        intervalMonths:
+          type: integer
+          minimum: 1
+        firstDueKm:
+          type: integer
+          minimum: 0
+        firstDueMonths:
+          type: integer
+          minimum: 0
+        oneTime:
+          type: boolean
+          default: false
+        active:
+          type: boolean
+          default: true
+
+    ExportedMaintenanceLog:
+      type: object
+      description: >-
+        A log as in `MaintenanceLogRequest`, with tasks referred to by `ref` and the currency of its costs.
+        A material's `taskRef` must be contained in `performedTaskRefs`.
+      required: [ performedAt, mileageAtPerformed, currency ]
+      properties:
+        performedAt:
+          type: string
+          format: date
+        mileageAtPerformed:
+          type: integer
+          minimum: 0
+        notes:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        performedTaskRefs:
+          type: array
+          uniqueItems: true
+          maxItems: 200
+          items:
+            type: string
+            minLength: 1
+            maxLength: 40
+        currency:
+          $ref: '#/components/schemas/Currency'
+        laborCost:
+          type: number
+          minimum: 0
+          maximum: 99999.99
+          multipleOf: 0.01
+          description: Labor cost in `currency`
+        materials:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/ExportedMaintenanceMaterial'
+        measurements:
+          $ref: '#/components/schemas/MaintenanceMeasurementsRequest'
+
+    ExportedMaintenanceMaterial:
+      type: object
+      description: A material as in `MaintenanceMaterialRequest`, with the task referred to by `ref`.
+      required: [ name, quantity, unit ]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        partNumber:
+          type: string
+          maxLength: 100
+        quantity:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 999999.999
+          multipleOf: 0.001
+        unit:
+          $ref: '#/components/schemas/MaterialUnit'
+        price:
+          type: number
+          minimum: 0
+          maximum: 99999.99
+          multipleOf: 0.01
+          description: Total price of this material line in the currency of the log
+        taskRef:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: Optional performed task this material belongs to
+
     ErrorResponse:
       type: object
       properties:
@@ -2635,7 +2887,9 @@ components:
             `EMAIL_NOT_VERIFIED`, `ACCOUNT_DISABLED` (403 on login), `CAPTCHA_INVALID` (400: the
             `altcha` solution is missing, invalid, expired or already used) and
             `MAIL_QUOTA_EXCEEDED` (429: the daily email limit is reached), `WRONG_PASSWORD` (403 on
-            account deletion) and `LAST_ADMIN` (409 on account deletion).
+            account deletion), `LAST_ADMIN` (409 on account deletion), `IMPORT_INVALID` (400: the
+            import file breaks a rule, see `details`) and `IMPORT_FORMAT_UNSUPPORTED` (400: unknown
+            `formatVersion` of an import file).
         message:
           type: string
           description: >-
@@ -2643,3 +2897,11 @@ components:
             localized texts based on `status` and `code` instead of displaying this message.
         path:
           type: string
+        details:
+          type: array
+          maxItems: 100
+          description: >-
+            Optional list of single problems, each as `<location>: <problem>` in English (e.g. for
+            `IMPORT_INVALID`). Clients may show it as technical detail next to their own text.
+          items:
+            type: string
