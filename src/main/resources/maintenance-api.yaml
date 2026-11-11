@@ -31,7 +31,7 @@ info:
     (`GET /api/v1/auth/challenge`, self-hosted, no third party) in the `altcha` field. All emails count
     towards a global daily limit; when it is reached these endpoints answer 429 with code
     `MAIL_QUOTA_EXCEEDED` for every email alike.
-  version: 2.13.0
+  version: 2.14.0
 tags:
   - name: Auth
     description: >-
@@ -390,6 +390,9 @@ paths:
       tags: [ MaintenanceLogs ]
       operationId: updateMaintenanceLog
       summary: Update a maintenance log
+      description: >-
+        Replaces the log. Further work it created (`createdByLogId`) that is no longer in `performedTaskIds` is
+        deleted, unless another log contains it.
       requestBody:
         required: true
         content:
@@ -413,6 +416,9 @@ paths:
       tags: [ MaintenanceLogs ]
       operationId: deleteMaintenanceLog
       summary: Delete a maintenance log
+      description: >-
+        Deletes the log together with the further work it created (`createdByLogId`), unless another log contains
+        that task. Planned tasks stay; they become due again.
       responses:
         '204':
           description: Maintenance log deleted
@@ -1568,6 +1574,14 @@ components:
           type: boolean
         active:
           type: boolean
+        createdByLogId:
+          type: integer
+          format: int64
+          readOnly: true
+          description: >-
+            Set for further work: the maintenance log whose `newTasks` created this one-time task. Deleting that
+            log, or removing the task from it, deletes the task too unless another log contains it. Not set for
+            planned tasks.
         status:
           $ref: '#/components/schemas/MaintenanceTaskStatus'
           readOnly: true
@@ -2818,6 +2832,17 @@ components:
           type: array
           uniqueItems: true
           maxItems: 200
+          items:
+            type: string
+            minLength: 1
+            maxLength: 40
+        createdTaskRefs:
+          type: array
+          uniqueItems: true
+          maxItems: 200
+          description: >-
+            The one-time tasks this log created as further work (`createdByLogId`); each must be contained in
+            `performedTaskRefs` and may be created by one log only.
           items:
             type: string
             minLength: 1
