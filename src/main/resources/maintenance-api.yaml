@@ -31,7 +31,17 @@ info:
     (`GET /api/v1/auth/challenge`, self-hosted, no third party) in the `altcha` field. All emails count
     towards a global daily limit; when it is reached these endpoints answer 429 with code
     `MAIL_QUOTA_EXCEEDED` for every email alike.
-  version: 2.15.0
+
+
+    Subscription (portal mode only): every account carries an access status (`accessStatus` in
+    `GET /api/v1/auth/me`). A new account starts with a free trial once its email address is verified;
+    afterwards a paid subscription is needed to record or change data. Without trial or subscription the
+    account is read-only: reading, export, the maintenance report, deleting and the account settings stay
+    available, everything else that writes vehicle data answers 403 with code `SUBSCRIPTION_REQUIRED`.
+    The subscription is bought on the payment provider's hosted checkout page
+    (`POST /api/v1/subscription/checkout`). In household mode the status is always `FULL` and nothing is
+    restricted.
+  version: 2.16.0
 tags:
   - name: Auth
     description: >-
@@ -44,6 +54,14 @@ tags:
     description: Public configuration of the running service (e.g. operating mode)
   - name: Profiles
     description: Profile selection without password (household mode only)
+  - name: Subscription
+    description: >-
+      Paid subscription of the current account via the payment provider Polar (portal mode only; 404 in
+      household mode). The client is sent to Polar's hosted pages; no payment data passes through this
+      service.
+  - name: Webhooks
+    description: >-
+      Notifications from the payment provider (portal mode only). Not meant for clients of this API.
   - name: Vehicles
   - name: VehicleExport
     description: >-
@@ -100,6 +118,8 @@ paths:
                 $ref: '#/components/schemas/VehicleResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/SubscriptionRequired'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -142,6 +162,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '403':
+          $ref: '#/components/responses/SubscriptionRequired'
         '401':
           $ref: '#/components/responses/Unauthorized'
     delete:
@@ -217,6 +239,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
+        '403':
+          $ref: '#/components/responses/SubscriptionRequired'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -261,6 +285,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '403':
+          $ref: '#/components/responses/SubscriptionRequired'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -304,6 +330,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '403':
+          $ref: '#/components/responses/SubscriptionRequired'
         '401':
           $ref: '#/components/responses/Unauthorized'
     delete:
@@ -364,6 +392,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '403':
+          $ref: '#/components/responses/SubscriptionRequired'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -410,6 +440,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '403':
+          $ref: '#/components/responses/SubscriptionRequired'
         '401':
           $ref: '#/components/responses/Unauthorized'
     delete:
@@ -588,6 +620,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '403':
+          $ref: '#/components/responses/SubscriptionRequired'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -699,6 +733,11 @@ paths:
         and notes at the bottom. Texts are in the language of the vehicle owner. Nothing is stored.
 
 
+        During the trial (`accessStatus` `TRIAL`) the QR code on every page is a demo code without the
+        vehicle ID, so the app refuses to scan the filled-in sheet and explains why; the sheet is otherwise
+        the same. With a read-only account (`EXPIRED`) the download answers 403 `SUBSCRIPTION_REQUIRED`.
+
+
         `cylinders` and `valvesPerCylinder` are required for VALVE_CLEARANCE and not allowed for the
         other templates (400). A template that is not available for the vehicle type is answered with
         400. The file name in `Content-Disposition` names the template, the vehicle and the print date in
@@ -734,6 +773,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '403':
+          $ref: '#/components/responses/SubscriptionRequired'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -1199,6 +1240,111 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/subscription/checkout:
+    post:
+      tags: [ Subscription ]
+      operationId: createSubscriptionCheckout
+      summary: Start buying the subscription (portal mode only)
+      description: >-
+        Creates a checkout session with the payment provider and returns the address of its hosted
+        checkout page; the client navigates there. The provider only learns the email address (needed for
+        the invoice) and a random customer reference, never the internal account ID. After payment the
+        provider returns the browser to the account page of the web app; the access status changes as soon
+        as the provider has notified the service (usually within seconds), so the client reloads `me`.
+        Also allowed during the trial and with a read-only account.
+      responses:
+        '200':
+          description: Address of the hosted checkout page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedirectResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/PaymentProviderUnavailable'
+
+  /api/v1/subscription/customer-portal:
+    post:
+      tags: [ Subscription ]
+      operationId: createSubscriptionCustomerPortal
+      summary: Open the payment provider's customer portal (portal mode only)
+      description: >-
+        Returns a short-lived address of the provider's customer portal, where the customer sees invoices,
+        changes the payment method or cancels. 404 if the account never had a subscription
+        (`hasSubscription` false) and in household mode.
+      responses:
+        '200':
+          description: Address of the customer portal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedirectResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/PaymentProviderUnavailable'
+
+  /api/v1/webhooks/polar:
+    post:
+      tags: [ Webhooks ]
+      operationId: receivePolarWebhook
+      summary: Receive a notification from Polar (portal mode only)
+      description: >-
+        Called by Polar, not by clients: no session and no CSRF token, authenticated by the Standard
+        Webhooks signature (`webhook-id`, `webhook-timestamp`, `webhook-signature`) over the raw body. The
+        service only uses an event as a trigger and then asks Polar for the current state of the
+        subscription, so duplicates and events out of order do no harm. 404 in household mode.
+      security: [ ]
+      parameters:
+        - name: webhook-id
+          in: header
+          required: true
+          schema:
+            type: string
+            maxLength: 200
+        - name: webhook-timestamp
+          in: header
+          required: true
+          schema:
+            type: string
+            maxLength: 20
+        - name: webhook-signature
+          in: header
+          required: true
+          schema:
+            type: string
+            maxLength: 2000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: string
+              maxLength: 1000000
+              description: >-
+                Polar event as raw JSON text. Deliberately a string and not modelled: the signature is
+                computed over the exact bytes, which any parsing and re-serialisation would change.
+      responses:
+        '202':
+          description: Event accepted (also for event types the service ignores)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: Signature missing, invalid or too old
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/config:
     get:
       tags: [ Config ]
@@ -1404,6 +1550,20 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     Forbidden:
       description: Logged in but not permitted (e.g. missing role ADMIN or missing CSRF token)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    SubscriptionRequired:
+      description: >-
+        The account is read-only because neither the trial nor a paid subscription is active
+        (`code: SUBSCRIPTION_REQUIRED`, portal mode only), or the CSRF token is missing (no `code`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PaymentProviderUnavailable:
+      description: The payment provider could not be reached; the client may retry later.
       content:
         application/json:
           schema:
@@ -2021,7 +2181,7 @@ components:
 
     UserResponse:
       type: object
-      required: [ id, role, active, emailVerified, language, currency, createdAt ]
+      required: [ id, role, active, emailVerified, language, currency, createdAt, accessStatus, hasSubscription ]
       properties:
         id:
           type: integer
@@ -2048,6 +2208,41 @@ components:
           type: string
           format: date-time
           readOnly: true
+        accessStatus:
+          $ref: '#/components/schemas/AccessStatus'
+        accessUntil:
+          type: string
+          format: date
+          readOnly: true
+          description: >-
+            `TRIAL`/`ACTIVE`: last day with full access (inclusive, server time zone); `EXPIRED`: the day
+            access ended. Missing for `FULL`, and for `EXPIRED` accounts that never had access.
+        hasSubscription:
+          type: boolean
+          readOnly: true
+          description: >-
+            True if the account has or had a subscription with the payment provider, so the customer
+            portal (invoices, cancellation) is available. Always false in household mode.
+
+    AccessStatus:
+      type: string
+      enum: [ TRIAL, ACTIVE, EXPIRED, FULL ]
+      readOnly: true
+      description: >-
+        What the account may do. `TRIAL`: free trial after the email address was verified, full access
+        except that worksheets carry a demo QR code. `ACTIVE`: paid subscription, full access.
+        `EXPIRED`: trial or subscription ended, the account is read-only (see `SUBSCRIPTION_REQUIRED`).
+        `FULL`: household mode, no restrictions. A payment that failed keeps `ACTIVE` until the payment
+        provider ends the subscription.
+
+    RedirectResponse:
+      type: object
+      required: [ url ]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Page of the payment provider the client navigates to (full page, not embedded).
 
     OperatingMode:
       type: string
@@ -2921,7 +3116,9 @@ components:
             `MAIL_QUOTA_EXCEEDED` (429: the daily email limit is reached), `WRONG_PASSWORD` (403 on
             account deletion), `LAST_ADMIN` (409 on account deletion), `IMPORT_INVALID` (400: the
             import file breaks a rule, see `details`) and `IMPORT_FORMAT_UNSUPPORTED` (400: unknown
-            `formatVersion` of an import file).
+            `formatVersion` of an import file), `SUBSCRIPTION_REQUIRED` (403: the account is read-only
+            because neither the trial nor a paid subscription is active) and `ALREADY_SUBSCRIBED` (409 on
+            checkout: a paid subscription is already active).
         message:
           type: string
           description: >-

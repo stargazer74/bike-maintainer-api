@@ -74,6 +74,26 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
 + Household profiles have a `displayName` (unique, 1–50 characters) but no email, so `UserResponse.email` is
   optional. A profile can only be deleted while it has no vehicles (**409** otherwise).
 
+## Subscription (portal mode) ##
+
++ Every account has an access status, returned as `UserResponse.accessStatus` (with `accessUntil` and
+  `hasSubscription`) by `GET /api/v1/auth/me`:
+  + `TRIAL`: free trial, starting when the email address is verified; full access, but worksheets carry a demo
+    QR code without the vehicle ID, so the app does not scan them.
+  + `ACTIVE`: paid subscription; full access. A failed payment keeps `ACTIVE` until the payment provider ends the
+    subscription.
+  + `EXPIRED`: trial or subscription ended; the account is **read-only**. Writing vehicle data (vehicles, tasks,
+    logs, target values, import) and worksheet downloads answer **403** with `code: SUBSCRIPTION_REQUIRED`.
+    Reading, export, the maintenance report, checklist, shim calculation, all deletions, logout and the account
+    settings stay available.
+  + `FULL`: household mode; nothing is restricted.
++ Buying and managing: `POST /api/v1/subscription/checkout` and `POST /api/v1/subscription/customer-portal` return
+  the address of a page hosted by the payment provider (Polar); the client navigates there. No payment data passes
+  through this service, and no provider script runs on its pages. Both answer 404 in household mode.
++ `POST /api/v1/webhooks/polar` receives the provider's notifications (Standard Webhooks signature, no session,
+  no CSRF); it is not meant for clients.
++ Trial length and price are configuration of the deployment and of the provider, not part of this API.
+
 ## Resources ##
 
 + **Config** (`/api/v1/config`) – Public configuration of the service, currently the operating mode.
@@ -82,6 +102,9 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
 + **Auth** (`/api/v1/auth/...`) – `challenge` (ALTCHA), `register`, `verify-email` and `verify-email/resend`, `login`, `logout`, `me`
   (current user), `password` (change password), `password-reset/request` and `password-reset/confirm` (reset via
   emailed token).
++ **Subscription** (`/api/v1/subscription/...`) – `checkout` and `customer-portal` of the payment provider
+  (portal mode only).
++ **Webhooks** (`/api/v1/webhooks/polar`) – Notifications of the payment provider (portal mode only).
 + **Admin** (`/api/v1/admin/users`) – List users and change their role/active state (role `ADMIN` only).
 + **Vehicles** (`/api/v1/vehicles`) – CRUD for vehicles (motorcycle/car) including current mileage.
 + **MaintenanceTasks** (`/api/v1/vehicles/{vehicleId}/maintenance-tasks`) – Maintenance tasks for a vehicle with
