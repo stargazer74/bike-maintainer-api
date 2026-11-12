@@ -86,7 +86,7 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
     logs, target values, import) and worksheet downloads answer **403** with `code: SUBSCRIPTION_REQUIRED`.
     Reading, export, the maintenance report, checklist, shim calculation, all deletions, logout and the account
     settings stay available.
-  + `FULL`: household mode; nothing is restricted.
+  + `FULL`: household mode, and administrators in portal mode (they run the service); nothing is restricted.
 + Buying and managing: `POST /api/v1/subscription/checkout` and `POST /api/v1/subscription/customer-portal` return
   the address of a page hosted by the payment provider (Polar); the client navigates there. No payment data passes
   through this service, and no provider script runs on its pages. Both answer 404 in household mode.

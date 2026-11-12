@@ -39,9 +39,9 @@ info:
     account is read-only: reading, export, the maintenance report, deleting and the account settings stay
     available, everything else that writes vehicle data answers 403 with code `SUBSCRIPTION_REQUIRED`.
     The subscription is bought on the payment provider's hosted checkout page
-    (`POST /api/v1/subscription/checkout`). In household mode the status is always `FULL` and nothing is
-    restricted.
-  version: 2.16.0
+    (`POST /api/v1/subscription/checkout`). Administrators and household mode always have `FULL`, nothing
+    is restricted for them.
+  version: 2.16.1
 tags:
   - name: Auth
     description: >-
@@ -2232,7 +2232,7 @@ components:
         What the account may do. `TRIAL`: free trial after the email address was verified, full access
         except that worksheets carry a demo QR code. `ACTIVE`: paid subscription, full access.
         `EXPIRED`: trial or subscription ended, the account is read-only (see `SUBSCRIPTION_REQUIRED`).
-        `FULL`: household mode, no restrictions. A payment that failed keeps `ACTIVE` until the payment
+        `FULL`: no restrictions – household mode, and administrators in portal mode. A payment that failed keeps `ACTIVE` until the payment
         provider ends the subscription.
 
     RedirectResponse:
