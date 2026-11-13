@@ -108,6 +108,9 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
 + **Subscription** (`/api/v1/subscription/...`) – `checkout` and `customer-portal` of the payment provider
   (portal mode only).
 + **Webhooks** (`/api/v1/webhooks/paddle`) – Notifications of the payment provider (portal mode only).
++ **Device sessions** (`/api/v1/auth/device-session`) – An app exchanges its single-use device token for a session and
+  a new token. With `nextDeviceToken` it chooses the new token itself and stores it before sending, so a lost answer
+  does not cost the login: it then presents the new token first, the old one only after a 401.
 + **Admin** (`/api/v1/admin/users`) – List users and change their role/active state (role `ADMIN` only).
 + **Vehicles** (`/api/v1/vehicles`) – CRUD for vehicles (motorcycle/car) including current mileage.
   `PUT .../{vehicleId}/mileage` only raises the current mileage and leaves the other fields alone, so clients can send
