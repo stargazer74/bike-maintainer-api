@@ -87,16 +87,19 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
     Reading, export, the maintenance report, checklist, shim calculation, all deletions, logout and the account
     settings stay available.
   + `FULL`: household mode, and administrators in portal mode (they run the service); nothing is restricted.
-+ Buying and managing: `POST /api/v1/subscription/checkout` and `POST /api/v1/subscription/customer-portal` return
-  the address of a page hosted by the payment provider (Polar); the client navigates there. No payment data passes
-  through this service, and no provider script runs on its pages. Both answer 404 in household mode.
-+ `POST /api/v1/webhooks/polar` receives the provider's notifications (Standard Webhooks signature, no session,
++ Buying and managing (payment provider Paddle, merchant of record): `POST /api/v1/subscription/checkout` returns the
+  address of the payment page of the web app with a Paddle transaction attached; that page is the only one that
+  loads Paddle.js (client token from `GET /api/v1/config`, field `payment`). `POST /api/v1/subscription/customer-portal`
+  returns the address of Paddle's customer portal. The client navigates there with a full page load. No payment
+  data passes through this service. Both answer 404 in household mode.
++ `POST /api/v1/webhooks/paddle` receives the provider's notifications (`Paddle-Signature` header, no session,
   no CSRF); it is not meant for clients.
 + Trial length and price are configuration of the deployment and of the provider, not part of this API.
 
 ## Resources ##
 
-+ **Config** (`/api/v1/config`) – Public configuration of the service, currently the operating mode.
++ **Config** (`/api/v1/config`) – Public configuration of the service: operating mode, website address and, in portal
+  mode, the public values for the payment page.
 + **Profiles** (`/api/v1/profiles`) – List, create, rename, delete and select household profiles (household mode only).
 
 + **Auth** (`/api/v1/auth/...`) – `challenge` (ALTCHA), `register`, `verify-email` and `verify-email/resend`, `login`, `logout`, `me`
@@ -104,7 +107,7 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
   emailed token).
 + **Subscription** (`/api/v1/subscription/...`) – `checkout` and `customer-portal` of the payment provider
   (portal mode only).
-+ **Webhooks** (`/api/v1/webhooks/polar`) – Notifications of the payment provider (portal mode only).
++ **Webhooks** (`/api/v1/webhooks/paddle`) – Notifications of the payment provider (portal mode only).
 + **Admin** (`/api/v1/admin/users`) – List users and change their role/active state (role `ADMIN` only).
 + **Vehicles** (`/api/v1/vehicles`) – CRUD for vehicles (motorcycle/car) including current mileage.
 + **MaintenanceTasks** (`/api/v1/vehicles/{vehicleId}/maintenance-tasks`) – Maintenance tasks for a vehicle with
