@@ -41,7 +41,7 @@ info:
     The subscription is bought through the payment provider Paddle on the payment page of the web app
     (`POST /api/v1/subscription/checkout`). Administrators and household mode always have `FULL`, nothing
     is restricted for them.
-  version: 2.19.0
+  version: 2.20.0
 tags:
   - name: Auth
     description: >-
@@ -1181,6 +1181,12 @@ paths:
         rejected. Clients exchange one token at a time; after a 401 they re-read the stored token and retry once
         if it changed in the meantime. Every rejection – unknown, expired, removed or reused token, deactivated
         or unverified account – answers the same 401. Answers 404 in household mode.
+
+
+        Lost answers: with `nextDeviceToken` the client chooses the new token itself and stores it before
+        sending. If the request reaches the server but the answer is lost, the client still knows the new
+        token: it presents that one first and only after a 401 the old one. Without `nextDeviceToken` the
+        server generates the new token as before.
       security: [ ]
       requestBody:
         required: true
@@ -2160,6 +2166,16 @@ components:
           type: string
           minLength: 43
           maxLength: 43
+        nextDeviceToken:
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: '^[A-Za-z0-9_-]{43}$'
+          description: >-
+            Optional new device token chosen by the client: 256 random bits from a cryptographically secure
+            generator as Base64url without padding, never used before and different from `deviceToken`. The
+            server stores only its hash and returns it as `deviceToken` of the answer. 400 if it equals
+            `deviceToken` or does not match the format.
 
     DeviceLoginResponse:
       type: object
