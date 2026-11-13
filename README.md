@@ -110,6 +110,9 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
 + **Webhooks** (`/api/v1/webhooks/paddle`) – Notifications of the payment provider (portal mode only).
 + **Admin** (`/api/v1/admin/users`) – List users and change their role/active state (role `ADMIN` only).
 + **Vehicles** (`/api/v1/vehicles`) – CRUD for vehicles (motorcycle/car) including current mileage.
+  `PUT .../{vehicleId}/mileage` only raises the current mileage and leaves the other fields alone, so clients can send
+  it later (offline queue) without overwriting other changes; same value → 200 unchanged, lower value → 409
+  `MILEAGE_BELOW_CURRENT`.
 + **MaintenanceTasks** (`/api/v1/vehicles/{vehicleId}/maintenance-tasks`) – Maintenance tasks for a vehicle with
   km- and/or month-based intervals.
 + **MaintenanceLogs** (`/api/v1/vehicles/{vehicleId}/maintenance-logs`) – History of maintenance performed

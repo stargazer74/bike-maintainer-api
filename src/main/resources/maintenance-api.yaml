@@ -41,7 +41,7 @@ info:
     The subscription is bought through the payment provider Paddle on the payment page of the web app
     (`POST /api/v1/subscription/checkout`). Administrators and household mode always have `FULL`, nothing
     is restricted for them.
-  version: 2.17.0
+  version: 2.18.0
 tags:
   - name: Auth
     description: >-
@@ -180,6 +180,43 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /api/v1/vehicles/{vehicleId}/mileage:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+    put:
+      tags: [ Vehicles ]
+      operationId: updateMileage
+      summary: Raise the current mileage of a vehicle
+      description: >-
+        Sets only `currentMileage` and leaves every other field of the vehicle as it is, so a client may
+        send it later (e.g. queued while offline) without overwriting changes made elsewhere in the
+        meantime. Safe to repeat: the same value as the current one answers 200 and changes nothing. A
+        value below the current mileage answers 409 with code `MILEAGE_BELOW_CURRENT` and changes nothing;
+        the client reloads the vehicle to show the current value. Correcting a mistyped, too high mileage
+        downwards is only possible with `PUT /api/v1/vehicles/{vehicleId}`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MileageRequest'
+      responses:
+        '200':
+          description: The vehicle with its (possibly unchanged) mileage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '403':
+          $ref: '#/components/responses/SubscriptionRequired'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /api/v1/vehicles/{vehicleId}/export:
     parameters:
       - $ref: '#/components/parameters/VehicleId'
@@ -1623,6 +1660,15 @@ components:
         currentMileage:
           type: integer
           minimum: 0
+
+    MileageRequest:
+      type: object
+      required: [ mileage ]
+      properties:
+        mileage:
+          type: integer
+          minimum: 0
+          description: The new current mileage in km; must not be below the current one.
 
     VehicleResponse:
       type: object
@@ -3128,8 +3174,9 @@ components:
             account deletion), `LAST_ADMIN` (409 on account deletion), `IMPORT_INVALID` (400: the
             import file breaks a rule, see `details`) and `IMPORT_FORMAT_UNSUPPORTED` (400: unknown
             `formatVersion` of an import file), `SUBSCRIPTION_REQUIRED` (403: the account is read-only
-            because neither the trial nor a paid subscription is active) and `ALREADY_SUBSCRIBED` (409 on
-            checkout: a paid subscription is already active).
+            because neither the trial nor a paid subscription is active), `ALREADY_SUBSCRIBED` (409 on
+            checkout: a paid subscription is already active) and `MILEAGE_BELOW_CURRENT` (409 on
+            `PUT .../mileage`: the new mileage is below the current one).
         message:
           type: string
           description: >-
