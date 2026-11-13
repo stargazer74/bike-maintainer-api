@@ -117,6 +117,8 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
   km- and/or month-based intervals.
 + **MaintenanceLogs** (`/api/v1/vehicles/{vehicleId}/maintenance-logs`) – History of maintenance performed
   (date, mileage, completed tasks).
+  An optional `clientEntryId` (UUID, unique per vehicle) makes creating a log safe to repeat: a second create with the
+  same id returns the existing log with 200 instead of creating a duplicate (offline queue of the app).
 + **MaintenanceReport** (`/api/v1/vehicles/{vehicleId}/maintenance-report`) – Maintenance report/history of a
   vehicle as a PDF download (`application/pdf`).
 

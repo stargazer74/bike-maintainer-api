@@ -41,7 +41,7 @@ info:
     The subscription is bought through the payment provider Paddle on the payment page of the web app
     (`POST /api/v1/subscription/checkout`). Administrators and household mode always have `FULL`, nothing
     is restricted for them.
-  version: 2.18.0
+  version: 2.19.0
 tags:
   - name: Auth
     description: >-
@@ -413,6 +413,11 @@ paths:
       tags: [ MaintenanceLogs ]
       operationId: createMaintenanceLog
       summary: Create a maintenance log for a vehicle
+      description: >-
+        Safe to repeat with `clientEntryId`: if the vehicle already has a log with this id, the existing log
+        is returned with 200 and nothing is created or changed – also when the content of the request
+        differs; the first one counts. This lets a client resend an entry whose answer was lost (offline
+        queue) without creating it twice. Without `clientEntryId` every request creates a log.
       requestBody:
         required: true
         content:
@@ -422,6 +427,14 @@ paths:
       responses:
         '201':
           description: Maintenance log created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceLogResponse'
+        '200':
+          description: >-
+            A log with this `clientEntryId` already exists for the vehicle; it is returned unchanged and
+            nothing is created
           content:
             application/json:
               schema:
@@ -1823,6 +1836,13 @@ components:
       type: object
       required: [ performedAt, mileageAtPerformed ]
       properties:
+        clientEntryId:
+          type: string
+          format: uuid
+          description: >-
+            Optional random id chosen by the client when the entry is recorded and sent unchanged with every
+            attempt; unique per vehicle. A repeated create with the same id returns the existing log (see
+            `createMaintenanceLog`). Ignored when updating a log. Carries no personal or device data.
         performedAt:
           type: string
           format: date
@@ -1987,6 +2007,11 @@ components:
           type: integer
           format: int64
           readOnly: true
+        clientEntryId:
+          type: string
+          format: uuid
+          readOnly: true
+          description: The `clientEntryId` the log was created with, if any.
         vehicleId:
           type: integer
           format: int64
