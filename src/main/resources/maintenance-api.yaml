@@ -38,10 +38,10 @@ info:
     afterwards a paid subscription is needed to record or change data. Without trial or subscription the
     account is read-only: reading, export, the maintenance report, deleting and the account settings stay
     available, everything else that writes vehicle data answers 403 with code `SUBSCRIPTION_REQUIRED`.
-    The subscription is bought on the payment provider's hosted checkout page
+    The subscription is bought through the payment provider Paddle on the payment page of the web app
     (`POST /api/v1/subscription/checkout`). Administrators and household mode always have `FULL`, nothing
     is restricted for them.
-  version: 2.16.1
+  version: 2.17.0
 tags:
   - name: Auth
     description: >-
@@ -56,8 +56,9 @@ tags:
     description: Profile selection without password (household mode only)
   - name: Subscription
     description: >-
-      Paid subscription of the current account via the payment provider Polar (portal mode only; 404 in
-      household mode). The client is sent to Polar's hosted pages; no payment data passes through this
+      Paid subscription of the current account via the payment provider Paddle (merchant of record; portal
+      mode only; 404 in household mode). The client is sent to the payment page of the web app, which
+      opens Paddle's checkout, or to Paddle's customer portal; no payment data passes through this
       service.
   - name: Webhooks
     description: >-
@@ -1246,15 +1247,17 @@ paths:
       operationId: createSubscriptionCheckout
       summary: Start buying the subscription (portal mode only)
       description: >-
-        Creates a checkout session with the payment provider and returns the address of its hosted
-        checkout page; the client navigates there. The provider only learns the email address (needed for
-        the invoice) and a random customer reference, never the internal account ID. After payment the
-        provider returns the browser to the account page of the web app; the access status changes as soon
+        Creates a transaction with the payment provider and returns the address of the payment page of the
+        web app with the transaction attached (`/abo/bezahlen?_ptxn=…`, the provider's default payment
+        link); the client navigates there with a full page load. That page is the only one that loads the
+        provider's script (Paddle.js) and opens its checkout. The provider only learns the email address
+        (needed for the invoice) and a random customer reference, never the internal account ID. After
+        payment the browser returns to the account page of the web app; the access status changes as soon
         as the provider has notified the service (usually within seconds), so the client reloads `me`.
         Also allowed during the trial and with a read-only account.
       responses:
         '200':
-          description: Address of the hosted checkout page
+          description: Address of the payment page with the transaction
           content:
             application/json:
               schema:
@@ -1291,31 +1294,20 @@ paths:
         '503':
           $ref: '#/components/responses/PaymentProviderUnavailable'
 
-  /api/v1/webhooks/polar:
+  /api/v1/webhooks/paddle:
     post:
       tags: [ Webhooks ]
-      operationId: receivePolarWebhook
-      summary: Receive a notification from Polar (portal mode only)
+      operationId: receivePaddleWebhook
+      summary: Receive a notification from Paddle (portal mode only)
       description: >-
-        Called by Polar, not by clients: no session and no CSRF token, authenticated by the Standard
-        Webhooks signature (`webhook-id`, `webhook-timestamp`, `webhook-signature`) over the raw body. The
-        service only uses an event as a trigger and then asks Polar for the current state of the
-        subscription, so duplicates and events out of order do no harm. 404 in household mode.
+        Called by Paddle, not by clients: no session and no CSRF token, authenticated by the
+        `Paddle-Signature` header (`ts=<unix seconds>;h1=<hex HMAC-SHA256 of "ts:raw body">`, several `h1`
+        while the secret is rotated) over the raw body. The service only uses an event as a trigger and then
+        asks Paddle for the current state of the subscription, so duplicates and events out of order do no
+        harm. 404 in household mode.
       security: [ ]
       parameters:
-        - name: webhook-id
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 200
-        - name: webhook-timestamp
-          in: header
-          required: true
-          schema:
-            type: string
-            maxLength: 20
-        - name: webhook-signature
+        - name: Paddle-Signature
           in: header
           required: true
           schema:
@@ -1329,7 +1321,7 @@ paths:
               type: string
               maxLength: 1000000
               description: >-
-                Polar event as raw JSON text. Deliberately a string and not modelled: the signature is
+                Paddle event as raw JSON text. Deliberately a string and not modelled: the signature is
                 computed over the exact bytes, which any parsing and re-serialisation would change.
       responses:
         '202':
@@ -2242,7 +2234,9 @@ components:
         url:
           type: string
           format: uri
-          description: Page of the payment provider the client navigates to (full page, not embedded).
+          description: >-
+            Page the client navigates to with a full page load, not embedded: the payment page of the web
+            app (checkout) or the provider's customer portal.
 
     OperatingMode:
       type: string
@@ -2293,6 +2287,23 @@ components:
             Address of the public website (landing page, legal notice, privacy policy), without a
             trailing slash. Only set in portal mode and only if the operator configured it, otherwise
             missing or null; clients show no links to the website without it.
+        payment:
+          $ref: '#/components/schemas/PaymentConfig'
+
+    PaymentConfig:
+      type: object
+      required: [ clientToken, sandbox ]
+      description: >-
+        What the payment page of the web app needs to load Paddle.js. Only set in portal mode, otherwise
+        missing or null. Public values, no secrets.
+      properties:
+        clientToken:
+          type: string
+          example: live_7d279f61a3499fed520f7cd8c08
+          description: Client-side token of Paddle (`Paddle.Initialize({ token })`).
+        sandbox:
+          type: boolean
+          description: True if the service talks to Paddle's sandbox; Paddle.js then runs with environment `sandbox`.
 
     DisplayName:
       type: string
