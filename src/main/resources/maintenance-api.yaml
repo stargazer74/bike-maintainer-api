@@ -41,7 +41,7 @@ info:
     The subscription is bought through the payment provider Paddle on the payment page of the web app
     (`POST /api/v1/subscription/checkout`). Administrators and household mode always have `FULL`, nothing
     is restricted for them.
-  version: 2.20.0
+  version: 2.20.1
 tags:
   - name: Auth
     description: >-
@@ -1136,7 +1136,7 @@ paths:
         `ACCOUNT_DISABLED`). Additionally registers the device and returns a device token. When the session
         expires, the app exchanges the token for a new session via `device-session`. A device stays registered
         until it is not used for 90 days, the user logs out from it, removes it, changes or resets the password,
-        or deletes the account. A device can only be registered with email and password, never from an
+        an administrator deactivates the account, or the account is deleted. A device can only be registered with email and password, never from an
         existing session. Answers 404 in household mode.
       security: [ ]
       requestBody:
@@ -1178,9 +1178,10 @@ paths:
         Exchanges the device token for a new session and returns a new device token; the old one becomes
         invalid. Presenting an already exchanged token again removes the device and ends the sessions started
         with it (the token was probably copied) – except within 60 seconds of the exchange, when it is only
-        rejected. Clients exchange one token at a time; after a 401 they re-read the stored token and retry once
-        if it changed in the meantime. Every rejection – unknown, expired, removed or reused token, deactivated
-        or unverified account – answers the same 401. Answers 404 in household mode.
+        rejected. Clients exchange one token at a time; if another part of the client renewed the session in the
+        meantime, they repeat the request with that session instead of exchanging again. Every rejection –
+        unknown, expired, removed or reused token, deactivated or unverified account – answers the same 401.
+        Answers 404 in household mode.
 
 
         Lost answers: with `nextDeviceToken` the client chooses the new token itself and stores it before
