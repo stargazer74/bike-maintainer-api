@@ -122,6 +122,9 @@ specification using the `openapi-generator-maven-plugin` (generator `spring`, `i
   (date, mileage, completed tasks).
   An optional `clientEntryId` (UUID, unique per vehicle) makes creating a log safe to repeat: a second create with the
   same id returns the existing log with 200 instead of creating a duplicate (offline queue of the app).
++ **VehicleTemplates** (`/api/v1/vehicle-templates`, `POST /api/v1/vehicles/{vehicleId}/template`) – Search and view
+  maintenance plans from the catalog `bike-maintainer-templates` (values are guidelines without warranty) and apply
+  selected tasks to a vehicle. Applying twice skips tasks the vehicle already has (`templateKey` on the task).
 + **MaintenanceReport** (`/api/v1/vehicles/{vehicleId}/maintenance-report`) – Maintenance report/history of a
   vehicle as a PDF download (`application/pdf`).
 

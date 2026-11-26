@@ -41,7 +41,7 @@ info:
     The subscription is bought through the payment provider Paddle on the payment page of the web app
     (`POST /api/v1/subscription/checkout`). Administrators and household mode always have `FULL`, nothing
     is restricted for them.
-  version: 2.20.1
+  version: 2.21.0
 tags:
   - name: Auth
     description: >-
@@ -81,6 +81,11 @@ tags:
     description: >-
       Printable worksheets for measuring and adjustment work (e.g. valve clearance). A worksheet is an
       empty form with a prefilled vehicle header; nothing is stored.
+  - name: VehicleTemplates
+    description: >-
+      Maintenance plans for common vehicles from the catalog `bike-maintainer-templates`: search, view and
+      apply to a vehicle. The values are guidelines without warranty; the manual of the vehicle is
+      authoritative. The catalog ships with the backend release; nothing is queried at runtime.
 security:
   - cookieAuth: [ ]
 paths:
@@ -829,6 +834,116 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /api/v1/vehicle-templates:
+    get:
+      tags: [ VehicleTemplates ]
+      operationId: searchVehicleTemplates
+      summary: Search the catalog for vehicle templates
+      description: >-
+        Finds templates by make (required) and optionally by type, model and model year. Make, model and
+        aliases are compared ignoring case, spaces, `-`, `_` and `.`; the make must match exactly, the
+        model term only has to be contained. Sorted by make, model and `yearFrom`. No match answers an empty
+        list. Reading is also possible with a read-only account (`EXPIRED`).
+      parameters:
+        - name: make
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 100
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/VehicleType'
+        - name: model
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+        - name: year
+          in: query
+          required: false
+          description: Model year; matches templates whose range `yearFrom`..`yearTo` contains it
+          schema:
+            type: integer
+            minimum: 1900
+            maximum: 2100
+      responses:
+        '200':
+          description: Matching templates (possibly empty)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VehicleTemplateSummaryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v1/vehicle-templates/{templateId}:
+    parameters:
+      - name: templateId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-z0-9-]{1,100}$'
+          example: honda-cb650r-2019
+    get:
+      tags: [ VehicleTemplates ]
+      operationId: getVehicleTemplate
+      summary: Get a vehicle template with tasks and sources
+      description: >-
+        Texts (task names, descriptions, detail labels, notes) are in the language of the account. Reading is
+        also possible with a read-only account (`EXPIRED`).
+      responses:
+        '200':
+          description: The template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleTemplateResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v1/vehicles/{vehicleId}/template:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+    post:
+      tags: [ VehicleTemplates ]
+      operationId: applyVehicleTemplate
+      summary: Apply selected tasks of a template to a vehicle
+      description: >-
+        Creates a maintenance task for each selected template task. Tasks the vehicle already has from this
+        template (same `templateKey`, active or inactive) are skipped, so applying twice creates nothing
+        new. Unknown template, or a vehicle that is unknown or owned by someone else, answers 404; a
+        read-only account (`EXPIRED`) answers 403 `SUBSCRIPTION_REQUIRED`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplyTemplateRequest'
+      responses:
+        '200':
+          description: Number of created and skipped tasks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplyTemplateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/SubscriptionRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /api/v1/auth/challenge:
     get:
       tags: [ Auth ]
@@ -1648,6 +1763,161 @@ components:
     VehicleType:
       type: string
       enum: [ MOTORCYCLE, CAR, BICYCLE, E_BIKE, QUAD, SCOOTER ]
+    VehicleTemplateSourceKind:
+      type: string
+      enum: [ MANUFACTURER, DEALER, PRESS, REPAIR_PORTAL, FORUM ]
+    VehicleTemplateSourceQuality:
+      type: string
+      description: >-
+        `SECONDARY` as soon as one task has no source of kind `MANUFACTURER`.
+      enum: [ MANUFACTURER, SECONDARY ]
+    VehicleTemplateSummaryResponse:
+      type: object
+      required: [ id, type, make, model, yearFrom, taskCount, sourceQuality ]
+      properties:
+        id:
+          type: string
+          example: honda-cb650r-2019
+        type:
+          $ref: '#/components/schemas/VehicleType'
+        make:
+          type: string
+        model:
+          type: string
+        yearFrom:
+          type: integer
+        yearTo:
+          type: integer
+          description: Last model year; missing means still built
+        taskCount:
+          type: integer
+        sourceQuality:
+          $ref: '#/components/schemas/VehicleTemplateSourceQuality'
+    VehicleTemplateResponse:
+      allOf:
+        - $ref: '#/components/schemas/VehicleTemplateSummaryResponse'
+        - type: object
+          required: [ sources, tasks ]
+          properties:
+            notes:
+              type: string
+              description: Remarks on the template, in the language of the account
+            sources:
+              type: array
+              items:
+                $ref: '#/components/schemas/VehicleTemplateSourceResponse'
+            tasks:
+              type: array
+              items:
+                $ref: '#/components/schemas/VehicleTemplateTaskResponse'
+    VehicleTemplateSourceResponse:
+      type: object
+      required: [ id, kind, title, retrieved ]
+      properties:
+        id:
+          type: string
+        kind:
+          $ref: '#/components/schemas/VehicleTemplateSourceKind'
+        title:
+          type: string
+        url:
+          type: string
+        locator:
+          type: string
+          description: Where to find the value in the source (e.g. page or chapter)
+        retrieved:
+          type: string
+          format: date
+    VehicleTemplateTaskResponse:
+      type: object
+      required: [ key, name, oneTime, sourceIds, details ]
+      properties:
+        key:
+          type: string
+          description: Key of the task inside the template; stored as `templateKey` when applied
+        name:
+          type: string
+        description:
+          type: string
+        intervalKm:
+          type: integer
+        intervalMonths:
+          type: integer
+        firstDueKm:
+          type: integer
+        firstDueMonths:
+          type: integer
+        oneTime:
+          type: boolean
+        sourceIds:
+          type: array
+          description: Sources of the values of this task (`VehicleTemplateSourceResponse.id`)
+          items:
+            type: string
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/VehicleTemplateDetailResponse'
+    VehicleTemplateDetailResponse:
+      type: object
+      required: [ label, value, sourceIds ]
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+        quantity:
+          type: string
+        sourceIds:
+          type: array
+          description: Sources of this value (`VehicleTemplateSourceResponse.id`)
+          items:
+            type: string
+    ApplyTemplateRequest:
+      type: object
+      description: >-
+        Selection of template tasks to apply to a vehicle. Answers 400 if a `key` is not in the template or
+        occurs twice, if `lastDoneKm` is above the current mileage of the vehicle, or if `lastDoneDate` is
+        in the future or before the first registration of the vehicle.
+
+
+        First due date per axis: with `lastDoneKm` and an `intervalKm` of the task, `firstDueKm` is
+        `lastDoneKm + intervalKm`; with `lastDoneDate` and an `intervalMonths`, `firstDueMonths` is the
+        months from the first registration to `lastDoneDate` plus `intervalMonths`. Otherwise the value of
+        the template is used.
+      required: [ templateId, tasks ]
+      properties:
+        templateId:
+          type: string
+          pattern: '^[a-z0-9-]{1,100}$'
+        tasks:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ApplyTemplateTaskRequest'
+    ApplyTemplateTaskRequest:
+      type: object
+      required: [ key ]
+      properties:
+        key:
+          type: string
+          minLength: 1
+          maxLength: 100
+        lastDoneKm:
+          type: integer
+          minimum: 0
+        lastDoneDate:
+          type: string
+          format: date
+    ApplyTemplateResponse:
+      type: object
+      required: [ created, skipped ]
+      properties:
+        created:
+          type: integer
+        skipped:
+          type: integer
+          description: Tasks the vehicle already has from this template
 
     VehicleRequest:
       type: object
@@ -1792,6 +2062,12 @@ components:
           type: boolean
         active:
           type: boolean
+        templateKey:
+          type: string
+          readOnly: true
+          description: >-
+            Key of the template task this task was applied from (`POST .../template`); recognizes
+            duplicates. Not set for tasks created by hand.
         createdByLogId:
           type: integer
           format: int64
@@ -3111,6 +3387,10 @@ components:
         active:
           type: boolean
           default: true
+        templateKey:
+          type: string
+          maxLength: 100
+          description: Key of the template task this task was applied from; keeps duplicate detection after a move
 
     ExportedMaintenanceLog:
       type: object
